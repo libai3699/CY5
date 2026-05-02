@@ -12,6 +12,7 @@ func Setup(r *gin.Engine) {
 	// 全局中间件
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger())
+	r.Static("/uploads", "./uploads")
 
 	// ── 前台 API（Flutter 调用）──────────────────────────────────
 	appGroup := r.Group("/api/app")
@@ -46,11 +47,14 @@ func Setup(r *gin.Engine) {
 	{
 		// 登录不加密（Admin 用 HTTPS 即可）
 		adminGroup.POST("/auth/login", admin.Login)
+		adminGroup.POST("/auth/logout", admin.Logout)
 
 		// 需要后台 JWT 的接口
 		authGroup := adminGroup.Group("")
 		authGroup.Use(middleware.AdminAuthRequired())
 		{
+			authGroup.GET("/auth/codes", admin.AccessCodes)
+			authGroup.GET("/user/info", admin.UserInfo)
 			authGroup.GET("/stats", admin.GetStats)
 
 			// 用户管理

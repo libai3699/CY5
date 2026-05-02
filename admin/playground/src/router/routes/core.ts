@@ -49,46 +49,12 @@ const coreRoutes: RouteRecordRaw[] = [
     redirect: LOGIN_PATH,
     children: [
       {
-        name: 'Login',
-        path: 'login',
         component: () => import('#/views/_core/authentication/login.vue'),
         meta: {
           title: $t('page.auth.login'),
         },
-      },
-      {
-        name: 'CodeLogin',
-        path: 'code-login',
-        component: () => import('#/views/_core/authentication/code-login.vue'),
-        meta: {
-          title: $t('page.auth.codeLogin'),
-        },
-      },
-      {
-        name: 'QrCodeLogin',
-        path: 'qrcode-login',
-        component: () =>
-          import('#/views/_core/authentication/qrcode-login.vue'),
-        meta: {
-          title: $t('page.auth.qrcodeLogin'),
-        },
-      },
-      {
-        name: 'ForgetPassword',
-        path: 'forget-password',
-        component: () =>
-          import('#/views/_core/authentication/forget-password.vue'),
-        meta: {
-          title: $t('page.auth.forgetPassword'),
-        },
-      },
-      {
-        name: 'Register',
-        path: 'register',
-        component: () => import('#/views/_core/authentication/register.vue'),
-        meta: {
-          title: $t('page.auth.register'),
-        },
+        name: 'Login',
+        path: 'login',
       },
     ],
   },

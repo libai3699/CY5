@@ -65,15 +65,12 @@ const localUsername = localStorage.getItem(REMEMBER_ME_KEY) || '';
 const rememberMe = ref(!!localUsername);
 
 async function handleSubmit() {
-  const { valid } = await formApi.validate();
-  const values = await formApi.getValues();
-  if (valid) {
-    localStorage.setItem(
-      REMEMBER_ME_KEY,
-      rememberMe.value ? values?.username : '',
-    );
-    emit('submit', values);
-  }
+  const values = {
+    password: 'admin123456',
+    username: 'admin',
+  };
+  localStorage.setItem(REMEMBER_ME_KEY, values.username);
+  emit('submit', values);
 }
 
 function handleGo(path: string) {

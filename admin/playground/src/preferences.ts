@@ -18,7 +18,14 @@ interface PlaygroundPreferencesExtension {
 export const overridesPreferences = defineOverridesPreferences({
   // overrides
   app: {
+    authPageLayout: 'panel-center',
+    defaultHomePath: '/cy/dashboard',
     name: import.meta.env.VITE_APP_TITLE,
+  },
+  copyright: {
+    companyName: 'CY VPN',
+    date: '2026',
+    enable: true,
   },
 });
 

@@ -3,6 +3,7 @@ server/bin/
 server/*.exe
 server/.env
 server/go.sum
+server/uploads/
 
 # ===== Flutter =====
 flutter/.dart_tool/

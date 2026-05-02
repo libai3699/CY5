@@ -1,11 +1,15 @@
 <script lang="ts" setup>
-import type { VbenFormSchema } from '@vben/common-ui';
-import type { BasicOption, Recordable } from '@vben/types';
+import { reactive, ref } from 'vue';
 
-import { computed, markRaw, useTemplateRef } from 'vue';
-
-import { AuthenticationLogin, SliderCaptcha, z } from '@vben/common-ui';
-import { $t } from '@vben/locales';
+import {
+  ElButton,
+  ElCard,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+} from 'element-plus';
+import 'element-plus/dist/index.css';
 
 import { useAuthStore } from '#/store';
 
@@ -13,120 +17,157 @@ defineOptions({ name: 'Login' });
 
 const authStore = useAuthStore();
 
-const MOCK_USER_OPTIONS: BasicOption[] = [
-  {
-    label: 'Super',
-    value: 'vben',
-  },
-  {
-    label: 'Admin',
-    value: 'admin',
-  },
-  {
-    label: 'User',
-    value: 'jack',
-  },
-];
-
-const formSchema = computed((): VbenFormSchema[] => {
-  return [
-    {
-      component: 'VbenSelect',
-      // componentProps(_values, form) {
-      //   return {
-      //     'onUpdate:modelValue': (value: string) => {
-      //       const findItem = MOCK_USER_OPTIONS.find(
-      //         (item) => item.value === value,
-      //       );
-      //       if (findItem) {
-      //         form.setValues({
-      //           password: '123456',
-      //           username: findItem.label,
-      //         });
-      //       }
-      //     },
-      //     options: MOCK_USER_OPTIONS,
-      //     placeholder: $t('authentication.selectAccount'),
-      //   };
-      // },
-      componentProps: {
-        options: MOCK_USER_OPTIONS,
-        placeholder: $t('authentication.selectAccount'),
-      },
-      fieldName: 'selectAccount',
-      label: $t('authentication.selectAccount'),
-      rules: z
-        .string()
-        .min(1, { message: $t('authentication.selectAccount') })
-        .optional()
-        .default('vben'),
-    },
-    {
-      component: 'VbenInput',
-      componentProps: {
-        placeholder: $t('authentication.usernameTip'),
-      },
-      dependencies: {
-        trigger(values, form) {
-          if (values.selectAccount) {
-            const findUser = MOCK_USER_OPTIONS.find(
-              (item) => item.value === values.selectAccount,
-            );
-            if (findUser) {
-              form.setValues({
-                password: '123456',
-                username: findUser.value,
-              });
-            }
-          }
-        },
-        triggerFields: ['selectAccount'],
-      },
-      fieldName: 'username',
-      label: $t('authentication.username'),
-      rules: z.string().min(1, { message: $t('authentication.usernameTip') }),
-    },
-    {
-      component: 'VbenInputPassword',
-      componentProps: {
-        placeholder: $t('authentication.password'),
-      },
-      fieldName: 'password',
-      label: $t('authentication.password'),
-      rules: z.string().min(1, { message: $t('authentication.passwordTip') }),
-    },
-    {
-      component: markRaw(SliderCaptcha),
-      fieldName: 'captcha',
-      rules: z.boolean().refine((value) => value, {
-        message: $t('authentication.verifyRequiredTip'),
-      }),
-    },
-  ];
+const form = reactive({
+  password: 'admin123456',
+  username: 'admin',
 });
 
-const loginRef =
-  useTemplateRef<InstanceType<typeof AuthenticationLogin>>('loginRef');
+const loading = ref(false);
 
-async function onSubmit(params: Recordable<any>) {
-  authStore.authLogin(params).catch(() => {
-    // 登陆失败，刷新验证码的演示
-    const formApi = loginRef.value?.getFormApi();
-    // 重置验证码组件的值
-    formApi?.setFieldValue('captcha', false, false);
-    // 使用表单API获取验证码组件实例，并调用其resume方法来重置验证码
-    formApi
-      ?.getFieldComponentRef<InstanceType<typeof SliderCaptcha>>('captcha')
-      ?.resume();
-  });
+async function onSubmit() {
+  loading.value = true;
+  try {
+    await authStore.authLogin({
+      password: 'admin123456',
+      username: 'admin',
+    });
+  } catch {
+    ElMessage.error('登录失败');
+  } finally {
+    loading.value = false;
+  }
 }
 </script>
 
 <template>
-  <AuthenticationLogin
-    ref="loginRef"
-    :form-schema="formSchema"
-    :loading="authStore.loginLoading"
-    @submit="onSubmit"
-  />
+  <main class="cy-login-page">
+    <section class="cy-login-visual">
+      <div>
+        <h1>CY VPN Admin</h1>
+        <p>VPN service management</p>
+      </div>
+    </section>
+
+    <section class="cy-login-panel">
+      <ElCard class="cy-login-card" shadow="never">
+        <div class="cy-login-title">
+          <h2>后台登录</h2>
+          <p>账号：admin，密码：admin123456</p>
+        </div>
+
+        <ElForm :model="form" label-position="top" @submit.prevent>
+          <ElFormItem label="用户名">
+            <ElInput v-model="form.username" disabled size="large" />
+          </ElFormItem>
+          <ElFormItem label="密码">
+            <ElInput
+              v-model="form.password"
+              disabled
+              show-password
+              size="large"
+              type="password"
+            />
+          </ElFormItem>
+          <ElButton
+            class="cy-login-button"
+            :loading="loading || authStore.loginLoading"
+            native-type="button"
+            size="large"
+            type="primary"
+            @click="onSubmit"
+          >
+            登录后台
+          </ElButton>
+        </ElForm>
+      </ElCard>
+    </section>
+  </main>
 </template>
+
+<style scoped>
+.cy-login-page {
+  display: grid;
+  width: 100vw;
+  min-width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  grid-template-columns: minmax(0, 1fr) 460px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.cy-login-visual {
+  display: flex;
+  align-items: center;
+  padding: 64px;
+  color: #f8fafc;
+  background:
+    linear-gradient(135deg, rgb(15 23 42 / 92%), rgb(30 64 175 / 72%)),
+    url('/logo.png') center / cover no-repeat;
+}
+
+.cy-login-visual h1 {
+  margin: 0;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.cy-login-visual p {
+  margin: 16px 0 0;
+  color: #cbd5e1;
+  font-size: 18px;
+}
+
+.cy-login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 32px;
+  background: #f8fafc;
+}
+
+.cy-login-card {
+  width: 100%;
+  max-width: 360px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.cy-login-title {
+  margin-bottom: 24px;
+}
+
+.cy-login-title h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.cy-login-title p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.cy-login-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+@media (width <= 768px) {
+  .cy-login-page {
+    grid-template-columns: 1fr;
+  }
+
+  .cy-login-visual {
+    display: none;
+  }
+
+  .cy-login-panel {
+    padding: 24px;
+  }
+}
+</style>

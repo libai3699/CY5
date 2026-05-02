@@ -55,7 +55,7 @@ const logoSrc = computed(() => {
 <template>
   <div
     :class="[isDark ? 'dark' : '']"
-    class="flex min-h-full flex-1 overflow-x-hidden select-none"
+    class="flex h-screen min-h-screen w-screen overflow-x-hidden select-none"
   >
     <template v-if="toolbar">
       <slot name="toolbar">
@@ -65,7 +65,7 @@ const logoSrc = computed(() => {
     <!-- 左侧认证面板 -->
     <AuthenticationFormView
       v-if="authPanelLeft"
-      class="min-h-full w-2/5 flex-1"
+      class="h-screen min-h-screen w-2/5 flex-1"
       data-side="left"
     >
       <template v-if="copyright" #copyright>
@@ -83,7 +83,10 @@ const logoSrc = computed(() => {
     </slot>
 
     <!-- 系统介绍 -->
-    <div v-if="!authPanelCenter" class="relative hidden w-0 flex-1 lg:block">
+    <div
+      v-if="!authPanelCenter"
+      class="relative hidden h-screen min-h-screen w-0 flex-1 lg:block"
+    >
       <div
         class="absolute inset-0 size-full bg-background-deep dark:bg-[#070709]"
       >
@@ -115,10 +118,13 @@ const logoSrc = computed(() => {
     </div>
 
     <!-- 中心认证面板 -->
-    <div v-if="authPanelCenter" class="relative flex-center w-full">
+    <div
+      v-if="authPanelCenter"
+      class="relative flex-center h-screen min-h-screen w-full"
+    >
       <div class="login-background absolute top-0 left-0 size-full"></div>
       <AuthenticationFormView
-        class="w-full rounded-3xl pb-20 shadow-float shadow-primary/5 md:w-2/3 md:bg-background lg:w-1/2 xl:w-[36%]"
+        class="h-screen min-h-screen w-full rounded-3xl pb-20 shadow-float shadow-primary/5 md:w-2/3 md:bg-background lg:w-1/2 xl:w-[36%]"
         data-side="bottom"
       >
         <template v-if="copyright" #copyright>
@@ -135,7 +141,7 @@ const logoSrc = computed(() => {
     <!-- 右侧认证面板 -->
     <AuthenticationFormView
       v-if="authPanelRight"
-      class="min-h-full w-2/5 flex-1"
+      class="h-screen min-h-screen w-2/5 flex-1"
       data-side="right"
     >
       <template v-if="copyright" #copyright>
