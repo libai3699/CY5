@@ -2,9 +2,9 @@ import type { RouteRecordRaw } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
   {
-    name: 'Workspace',
+    name: 'WorkspacePage',
     path: '/workspace',
-    component: () => import('#/views/dashboard/workspace/index.vue'),
+    component: () => import('#/views/dashboard/WorkspacePage.vue'),
     meta: {
       affixTab: true,
       icon: 'carbon:dashboard',

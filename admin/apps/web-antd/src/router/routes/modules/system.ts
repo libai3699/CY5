@@ -7,15 +7,15 @@ const routes: RouteRecordRaw[] = [
     path: '/users',
     children: [
       {
-        name: 'UserList',
+        name: 'UserListPage',
         path: '/users/list',
-        component: () => import('#/views/users/index.vue'),
+        component: () => import('#/views/users/UserListPage.vue'),
         meta: { icon: 'carbon:user', title: '用户列表' },
       },
       {
-        name: 'DeviceList',
+        name: 'UserDevicesPage',
         path: '/users/devices',
-        component: () => import('#/views/users/devices.vue'),
+        component: () => import('#/views/users/UserDevicesPage.vue'),
         meta: { icon: 'carbon:mobile', title: '设备管理' },
       },
     ],
@@ -26,15 +26,15 @@ const routes: RouteRecordRaw[] = [
     path: '/plans',
     children: [
       {
-        name: 'PlanList',
+        name: 'PlanListPage',
         path: '/plans/list',
-        component: () => import('#/views/plans/index.vue'),
+        component: () => import('#/views/plans/PlanListPage.vue'),
         meta: { icon: 'carbon:list', title: '套餐列表' },
       },
       {
-        name: 'OrderList',
+        name: 'PlanOrdersPage',
         path: '/plans/orders',
-        component: () => import('#/views/plans/orders.vue'),
+        component: () => import('#/views/plans/PlanOrdersPage.vue'),
         meta: { icon: 'carbon:document', title: '订单管理' },
       },
     ],
@@ -45,15 +45,15 @@ const routes: RouteRecordRaw[] = [
     path: '/content',
     children: [
       {
-        name: 'NoticeList',
+        name: 'ContentNoticesPage',
         path: '/content/notices',
-        component: () => import('#/views/content/notices.vue'),
+        component: () => import('#/views/content/ContentNoticesPage.vue'),
         meta: { icon: 'carbon:notification', title: '公共通知' },
       },
       {
-        name: 'ConfigList',
+        name: 'ContentConfigsPage',
         path: '/content/configs',
-        component: () => import('#/views/content/configs.vue'),
+        component: () => import('#/views/content/ContentConfigsPage.vue'),
         meta: { icon: 'carbon:settings-adjust', title: '系统配置' },
       },
     ],
@@ -64,15 +64,15 @@ const routes: RouteRecordRaw[] = [
     path: '/logs',
     children: [
       {
-        name: 'UserLogs',
+        name: 'LogUserPage',
         path: '/logs/user',
-        component: () => import('#/views/logs/user.vue'),
+        component: () => import('#/views/logs/LogUserPage.vue'),
         meta: { icon: 'carbon:user-activity', title: '用户登录日志' },
       },
       {
-        name: 'AdminLogs',
+        name: 'LogAdminPage',
         path: '/logs/admin',
-        component: () => import('#/views/logs/admin.vue'),
+        component: () => import('#/views/logs/LogAdminPage.vue'),
         meta: { icon: 'carbon:security', title: '后台登录日志' },
       },
     ],

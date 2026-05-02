@@ -1,43 +1,50 @@
 import type { RouteRecordStringComponent } from '@vben/types';
 
-import { requestClient } from '#/api/request';
-
 /**
- * 获取用户所有菜单 - 对接 Go 后端
+ * 获取后台菜单 - component 路径与 views/ 下文件名一一对应
  */
 export async function getAllMenusApi(): Promise<RouteRecordStringComponent[]> {
-  // 根据 PROJECT_PLAN.md，后端没有菜单接口
-  // 后台菜单直接在前端写死
   return Promise.resolve([
     {
-      name: 'Workspace',
+      name: 'WorkspacePage',
       path: '/workspace',
-      component: '/dashboard/workspace/index',
-      meta: {
-        affixTab: true,
-        icon: 'carbon:workspace',
-        order: -1,
-        title: '工作台',
-      },
+      component: '/dashboard/WorkspacePage',
+      meta: { affixTab: true, icon: 'carbon:dashboard', order: -1, title: '仪表盘' },
     },
     {
-      meta: {
-        icon: 'carbon:settings',
-        order: 1,
-        title: '系统管理',
-      },
-      name: 'System',
-      path: '/system',
+      meta: { icon: 'carbon:user-multiple', order: 1, title: '用户管理' },
+      name: 'UserMgmt',
+      path: '/users',
       children: [
-        {
-          name: 'UserManagement',
-          path: '/system/user',
-          component: '/system/user/index',
-          meta: {
-            icon: 'carbon:user-multiple',
-            title: '用户管理',
-          },
-        },
+        { name: 'UserListPage', path: '/users/list', component: '/users/UserListPage', meta: { icon: 'carbon:user', title: '用户列表' } },
+        { name: 'UserDevicesPage', path: '/users/devices', component: '/users/UserDevicesPage', meta: { icon: 'carbon:mobile', title: '设备管理' } },
+      ],
+    },
+    {
+      meta: { icon: 'carbon:purchase', order: 2, title: '套餐管理' },
+      name: 'PlanMgmt',
+      path: '/plans',
+      children: [
+        { name: 'PlanListPage', path: '/plans/list', component: '/plans/PlanListPage', meta: { icon: 'carbon:list', title: '套餐列表' } },
+        { name: 'PlanOrdersPage', path: '/plans/orders', component: '/plans/PlanOrdersPage', meta: { icon: 'carbon:document', title: '订单管理' } },
+      ],
+    },
+    {
+      meta: { icon: 'carbon:settings', order: 3, title: '内容管理' },
+      name: 'ContentMgmt',
+      path: '/content',
+      children: [
+        { name: 'ContentNoticesPage', path: '/content/notices', component: '/content/ContentNoticesPage', meta: { icon: 'carbon:notification', title: '公共通知' } },
+        { name: 'ContentConfigsPage', path: '/content/configs', component: '/content/ContentConfigsPage', meta: { icon: 'carbon:settings-adjust', title: '系统配置' } },
+      ],
+    },
+    {
+      meta: { icon: 'carbon:document', order: 4, title: '日志管理' },
+      name: 'LogMgmt',
+      path: '/logs',
+      children: [
+        { name: 'LogUserPage', path: '/logs/user', component: '/logs/LogUserPage', meta: { icon: 'carbon:user-activity', title: '用户登录日志' } },
+        { name: 'LogAdminPage', path: '/logs/admin', component: '/logs/LogAdminPage', meta: { icon: 'carbon:security', title: '后台登录日志' } },
       ],
     },
   ]);

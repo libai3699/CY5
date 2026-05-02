@@ -21,7 +21,7 @@ func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := extractToken(c)
 		if token == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "未登录"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "未登录"})
 			return
 		}
 
@@ -30,7 +30,7 @@ func AuthRequired() gin.HandlerFunc {
 			return []byte(config.App.JWTSecret), nil
 		})
 		if err != nil || !t.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "token 无效或已过期"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "token 无效或已过期"})
 			return
 		}
 
