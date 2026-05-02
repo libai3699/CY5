@@ -47,7 +47,7 @@ func Login(c *gin.Context) {
 	}
 
 	writeAdminLog(c, req.Username, 1)
-	handler.OK(c, gin.H{"token": token})
+	handler.OK(c, gin.H{"accessToken": token})
 }
 
 func writeAdminLog(c *gin.Context, username string, status int8) {

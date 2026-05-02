@@ -19,7 +19,7 @@ export namespace AuthApi {
 }
 
 /**
- * 登录
+ * 登录 - 对接 Go 后端
  */
 export async function loginApi(data: AuthApi.LoginParams) {
   return requestClient.post<AuthApi.LoginResult>('/auth/login', data);

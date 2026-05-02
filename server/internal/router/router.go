@@ -1,0 +1,95 @@
+package router
+
+import (
+	"cy5vpn/server/internal/handler/admin"
+	"cy5vpn/server/internal/handler/app"
+	"cy5vpn/server/internal/middleware"
+
+	"github.com/gin-gonic/gin"
+)
+
+func Setup(r *gin.Engine) {
+	// 全局中间件
+	r.Use(middleware.CORS())
+	r.Use(middleware.Logger())
+
+	// ── 前台 API（Flutter 调用）──────────────────────────────────
+	appGroup := r.Group("/api/app")
+	appGroup.Use(middleware.CryptoMiddleware()) // 所有前台接口加解密
+	{
+		// 无需登录
+		appGroup.POST("/auth/register", app.Register)
+		appGroup.POST("/auth/login", app.Login)
+		appGroup.GET("/config", app.GetConfig)
+		appGroup.GET("/notices", app.GetNotices)
+		appGroup.GET("/plans", app.GetPlans)
+
+		// 需要签名（设备接口）
+		deviceGroup := appGroup.Group("/device")
+		deviceGroup.Use(middleware.SignRequired())
+		{
+			deviceGroup.POST("/register", app.DeviceRegister)
+			deviceGroup.POST("/heartbeat", middleware.AuthRequired(), app.DeviceHeartbeat)
+		}
+
+		// 需要 JWT
+		userGroup := appGroup.Group("/user")
+		userGroup.Use(middleware.AuthRequired())
+		{
+			userGroup.GET("/profile", app.GetProfile)
+			userGroup.GET("/orders", app.GetOrders)
+		}
+	}
+
+	// ── 后台 API（Admin 调用）────────────────────────────────────
+	adminGroup := r.Group("/api/admin")
+	{
+		// 登录不加密（Admin 用 HTTPS 即可）
+		adminGroup.POST("/auth/login", admin.Login)
+
+		// 需要后台 JWT 的接口
+		authGroup := adminGroup.Group("")
+		authGroup.Use(middleware.AdminAuthRequired())
+		{
+			authGroup.GET("/stats", admin.GetStats)
+
+			// 用户管理
+			authGroup.GET("/users", admin.ListUsers)
+			authGroup.GET("/users/:id", admin.GetUser)
+			authGroup.PUT("/users/:id", admin.UpdateUser)
+
+			// 设备管理
+			authGroup.GET("/devices", admin.ListDevices)
+			authGroup.GET("/devices/:id", admin.GetDevice)
+
+			// 套餐管理
+			authGroup.GET("/plans", admin.ListPlans)
+			authGroup.POST("/plans", admin.CreatePlan)
+			authGroup.PUT("/plans/:id", admin.UpdatePlan)
+			authGroup.DELETE("/plans/:id", admin.DeletePlan)
+
+			// 订单管理
+			authGroup.GET("/orders", admin.ListOrders)
+			authGroup.POST("/orders", admin.CreateOrder)
+
+			// 配置管理
+			authGroup.GET("/configs", admin.ListConfigs)
+			authGroup.PUT("/configs/:key", admin.UpdateConfig)
+
+			// 通知管理
+			authGroup.GET("/notices", admin.ListNotices)
+			authGroup.POST("/notices", admin.CreateNotice)
+			authGroup.PUT("/notices/:id", admin.UpdateNotice)
+			authGroup.DELETE("/notices/:id", admin.DeleteNotice)
+
+			// 文件管理
+			authGroup.GET("/files", admin.ListFiles)
+			authGroup.POST("/files/upload", admin.UploadFile)
+			authGroup.DELETE("/files/:key", admin.DeleteFile)
+
+			// 日志
+			authGroup.GET("/logs/user", admin.ListUserLogs)
+			authGroup.GET("/logs/admin", admin.ListAdminLogs)
+		}
+	}
+}
