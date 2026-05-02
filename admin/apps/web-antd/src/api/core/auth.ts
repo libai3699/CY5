@@ -1,13 +1,11 @@
-import { baseRequestClient, requestClient } from '#/api/request';
+import { requestClient } from '#/api/request';
 
 export namespace AuthApi {
-  /** 登录接口参数 */
   export interface LoginParams {
     password?: string;
     username?: string;
   }
 
-  /** 登录接口返回值 */
   export interface LoginResult {
     accessToken: string;
   }
@@ -19,33 +17,31 @@ export namespace AuthApi {
 }
 
 /**
- * 登录 - 对接 Go 后端
+ * 登录
  */
 export async function loginApi(data: AuthApi.LoginParams) {
   return requestClient.post<AuthApi.LoginResult>('/auth/login', data);
 }
 
 /**
- * 刷新accessToken
+ * 刷新 token - 后端暂无此接口，直接返回当前 token
  */
 export async function refreshTokenApi() {
-  return baseRequestClient.post<AuthApi.RefreshTokenResult>('/auth/refresh', {
-    withCredentials: true,
-  });
+  const token = localStorage.getItem('accessToken') || '';
+  return Promise.resolve({ data: token, status: 0 });
 }
 
 /**
- * 退出登录
+ * 退出登录 - 前端清除即可
  */
 export async function logoutApi() {
-  return baseRequestClient.post('/auth/logout', {
-    withCredentials: true,
-  });
+  localStorage.removeItem('accessToken');
+  return Promise.resolve({ code: 0 });
 }
 
 /**
- * 获取用户权限码
+ * 获取权限码 - 管理员拥有所有权限
  */
 export async function getAccessCodesApi() {
-  return requestClient.get<string[]>('/auth/codes');
+  return Promise.resolve(['AC_100100', 'AC_100110', 'AC_100120', 'AC_100010']);
 }

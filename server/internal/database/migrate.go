@@ -4,11 +4,13 @@ import (
 	"log"
 
 	"cy5vpn/server/internal/model"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Migrate 自动建表
 func Migrate() {
 	err := DB.AutoMigrate(
+		&model.Admin{},
 		&model.User{},
 		&model.Device{},
 		&model.Plan{},
@@ -23,8 +25,32 @@ func Migrate() {
 	}
 	log.Println("[migrate] 数据表同步完成")
 
+	seedAdmin()
 	seedPlans()
 	seedConfigs()
+}
+
+// seedAdmin 初始化管理员账号（幂等）
+func seedAdmin() {
+	var count int64
+	DB.Model(&model.Admin{}).Count(&count)
+	if count > 0 {
+		return
+	}
+
+	// 默认密码 admin123456
+	hash, err := bcrypt.GenerateFromPassword([]byte("admin123456"), 12)
+	if err != nil {
+		log.Fatalf("[migrate] 生成管理员密码失败: %v", err)
+	}
+
+	admin := model.Admin{
+		Username: "admin",
+		Password: string(hash),
+		Status:   1,
+	}
+	DB.Create(&admin)
+	log.Println("[migrate] 管理员账号初始化完成 admin/admin123456")
 }
 
 // seedPlans 初始化套餐数据（幂等）

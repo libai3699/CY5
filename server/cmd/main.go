@@ -25,6 +25,7 @@ func main() {
 
 	// 5. 注册路由
 	r := gin.New()
+	r.SetTrustedProxies([]string{"127.0.0.1"})
 	router.Setup(r)
 
 	// 6. 启动服务

@@ -17,6 +17,19 @@ import App from './app.vue';
 import { router } from './router';
 
 async function bootstrap(namespace: string) {
+  // 清除旧版本的 preferences 缓存，强制使用新配置
+  const PREF_VERSION = 'v2';
+  const prefVersionKey = `${namespace}_pref_version`;
+  if (localStorage.getItem(prefVersionKey) !== PREF_VERSION) {
+    // 清除所有 preferences 相关缓存
+    Object.keys(localStorage).forEach((key) => {
+      if (key.includes('preferences') || key.includes('vben')) {
+        localStorage.removeItem(key);
+      }
+    });
+    localStorage.setItem(prefVersionKey, PREF_VERSION);
+  }
+
   // 初始化组件适配器
   await initComponentAdapter();
 
