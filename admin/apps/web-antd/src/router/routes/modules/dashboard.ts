@@ -1,7 +1,5 @@
 import type { RouteRecordRaw } from 'vue-router';
 
-import { $t } from '#/locales';
-
 const routes: RouteRecordRaw[] = [
   {
     name: 'Workspace',
@@ -9,9 +7,9 @@ const routes: RouteRecordRaw[] = [
     component: () => import('#/views/dashboard/workspace/index.vue'),
     meta: {
       affixTab: true,
-      icon: 'carbon:workspace',
+      icon: 'carbon:dashboard',
       order: -1,
-      title: $t('page.dashboard.workspace'),
+      title: '仪表盘',
     },
   },
 ];

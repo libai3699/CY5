@@ -55,8 +55,10 @@ func Setup(r *gin.Engine) {
 
 			// 用户管理
 			authGroup.GET("/users", admin.ListUsers)
+			authGroup.POST("/users", admin.CreateUser)
 			authGroup.GET("/users/:id", admin.GetUser)
 			authGroup.PUT("/users/:id", admin.UpdateUser)
+			authGroup.DELETE("/users/:id", admin.DeleteUser)
 
 			// 设备管理
 			authGroup.GET("/devices", admin.ListDevices)

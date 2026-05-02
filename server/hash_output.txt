@@ -1,2 +1,0 @@
-﻿password: admin123456
-hash: $2a$12$6XDdE/TA9PudZM3QjhdFdOhruv0LZqV38b7Okt3xqj5nOmWDMpR/e

@@ -8,6 +8,7 @@ import (
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ListUsers 用户列表（分页 + 搜索）
@@ -38,7 +39,6 @@ func ListUsers(c *gin.Context) {
 		Limit(size).
 		Find(&users)
 
-	// 脱敏处理
 	safe := make([]gin.H, 0, len(users))
 	for _, u := range users {
 		safe = append(safe, safeUserAdmin(u))
@@ -63,13 +63,60 @@ func GetUser(c *gin.Context) {
 	handler.OK(c, safeUserAdmin(user))
 }
 
-type updateUserReq struct {
-	Status           *int8 `json:"status"`
-	FreeUsedSeconds  *int  `json:"free_used_seconds"`
-	FreeLimitSeconds *int  `json:"free_limit_seconds"`
+type createUserReq struct {
+	Username         string `json:"username" binding:"required"`
+	Password         string `json:"password" binding:"required"`
+	Phone            string `json:"phone"`
+	FreeLimitSeconds int    `json:"free_limit_seconds"`
 }
 
-// UpdateUser 编辑用户（禁用/启用、重置免费时长）
+// CreateUser 新增用户
+func CreateUser(c *gin.Context) {
+	var req createUserReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		handler.Fail(c, 400, "参数错误: "+err.Error())
+		return
+	}
+
+	// 检查用户名是否已存在
+	var count int64
+	database.DB.Model(&model.User{}).Where("username = ?", req.Username).Count(&count)
+	if count > 0 {
+		handler.Fail(c, 400, "用户名已存在")
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
+	if err != nil {
+		handler.Fail(c, 500, "密码加密失败")
+		return
+	}
+
+	limit := 2700
+	if req.FreeLimitSeconds > 0 {
+		limit = req.FreeLimitSeconds
+	}
+
+	user := model.User{
+		Username:         req.Username,
+		Password:         string(hash),
+		Phone:            req.Phone,
+		Status:           1,
+		FreeLimitSeconds: limit,
+	}
+	database.DB.Create(&user)
+	handler.OK(c, safeUserAdmin(user))
+}
+
+type updateUserReq struct {
+	Status           *int8  `json:"status"`
+	Phone            string `json:"phone"`
+	Password         string `json:"password"`
+	FreeUsedSeconds  *int   `json:"free_used_seconds"`
+	FreeLimitSeconds *int   `json:"free_limit_seconds"`
+}
+
+// UpdateUser 编辑用户
 func UpdateUser(c *gin.Context) {
 	id := c.Param("id")
 	var user model.User
@@ -88,15 +135,36 @@ func UpdateUser(c *gin.Context) {
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
+	if req.Phone != "" {
+		updates["phone"] = req.Phone
+	}
 	if req.FreeUsedSeconds != nil {
 		updates["free_used_seconds"] = *req.FreeUsedSeconds
 	}
 	if req.FreeLimitSeconds != nil {
 		updates["free_limit_seconds"] = *req.FreeLimitSeconds
 	}
+	if req.Password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
+		if err == nil {
+			updates["password"] = string(hash)
+		}
+	}
 
 	database.DB.Model(&user).Updates(updates)
 	handler.OK(c, gin.H{"msg": "更新成功"})
+}
+
+// DeleteUser 删除用户
+func DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+	var user model.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		handler.Fail(c, 404, "用户不存在")
+		return
+	}
+	database.DB.Delete(&user)
+	handler.OK(c, gin.H{"msg": "删除成功"})
 }
 
 func safeUserAdmin(u model.User) gin.H {
