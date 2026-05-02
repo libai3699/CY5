@@ -20,3 +20,26 @@ func GetConfig(c *gin.Context) {
 
 	handler.OK(c, result)
 }
+
+// GetContactConfig 只返回联系方式配置（key_name 以 contact_ 开头）
+func GetContactConfig(c *gin.Context) {
+	var configs []model.AppConfig
+	database.DB.Where("key_name LIKE ?", "contact_%").Order("sort_order asc").Find(&configs)
+
+	type contactItem struct {
+		Key   string `json:"key"`
+		Label string `json:"label"`
+		Value string `json:"value"`
+	}
+
+	items := make([]contactItem, 0, len(configs))
+	for _, cfg := range configs {
+		items = append(items, contactItem{
+			Key:   cfg.KeyName,
+			Label: cfg.Label,
+			Value: cfg.Value,
+		})
+	}
+
+	handler.OK(c, items)
+}

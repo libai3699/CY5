@@ -3,6 +3,7 @@ import { requestClient } from '#/api/request';
 export interface Device {
   id: number;
   device_id: string;
+  display_id: string;
   user_id: number | null;
   brand: string;
   model: string;

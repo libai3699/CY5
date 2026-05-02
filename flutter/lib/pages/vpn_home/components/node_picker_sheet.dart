@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/vpn_node.dart';
+import 'node_label.dart';
 
 class NodePickerSheet extends StatelessWidget {
   const NodePickerSheet({
@@ -31,7 +32,11 @@ class NodePickerSheet extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: Text(
                     '选择线路',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF881337),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -39,25 +44,48 @@ class NodePickerSheet extends StatelessWidget {
                   child: ListView.separated(
                     controller: scrollController,
                     itemCount: nodes.length,
-                    separatorBuilder: (context, index) => const Divider(
+                    separatorBuilder: (_, __) => const Divider(
                       height: 1,
-                      thickness: 1,
+                      thickness: 0.5,
                       color: Color(0xFFF3D4DC),
+                      indent: 16,
+                      endIndent: 16,
                     ),
                     itemBuilder: (context, index) {
                       final node = nodes[index];
+                      final isSelected = node.id == selectedNode.id;
 
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          node.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: node.id == selectedNode.id
-                            ? const Icon(Icons.check_circle, color: Color(0xFFE11D48))
-                            : null,
+                      return GestureDetector(
                         onTap: () => onSelected(node),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFE11D48).withOpacity(0.08)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? const Color(0xFFE11D48).withOpacity(0.25)
+                                  : Colors.transparent,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(child: NodeLabel(node: node, fontSize: 15)),
+                              if (isSelected)
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: Color(0xFFE11D48),
+                                  size: 18,
+                                ),
+                            ],
+                          ),
+                        ),
                       );
                     },
                   ),

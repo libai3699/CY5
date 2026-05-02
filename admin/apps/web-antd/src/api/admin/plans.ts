@@ -1,6 +1,9 @@
 import { requestClient } from '#/api/request';
 
 export interface Plan {
+  discount_half_year?: number | null;
+  discount_quarter?: number | null;
+  discount_year?: number | null;
   id: number;
   name: string;
   price: number;

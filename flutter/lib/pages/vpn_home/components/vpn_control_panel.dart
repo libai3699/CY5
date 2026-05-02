@@ -8,26 +8,30 @@ import 'power_button.dart';
 class VpnControlPanel extends StatelessWidget {
   const VpnControlPanel({
     super.key,
-    required this.status,
-    required this.node,
-    required this.message,
-    required this.isLoadingNodes,
-    required this.isBusy,
     required this.hasNodes,
-    required this.onReloadNodes,
-    required this.onPowerPressed,
+    required this.isBusy,
+    required this.isLoadingNodes,
+    required this.message,
+    required this.node,
     required this.onNodePressed,
+    required this.onPowerPressed,
+    required this.onReloadNodes,
+    required this.remainingTimeText,
+    required this.status,
+    required this.trafficRemaining,
   });
 
-  final VpnStatus status;
-  final VpnNode? node;
-  final String? message;
-  final bool isLoadingNodes;
-  final bool isBusy;
   final bool hasNodes;
-  final VoidCallback onReloadNodes;
-  final VoidCallback onPowerPressed;
+  final bool isBusy;
+  final bool isLoadingNodes;
+  final String? message;
+  final VpnNode? node;
   final VoidCallback onNodePressed;
+  final VoidCallback onPowerPressed;
+  final VoidCallback onReloadNodes;
+  final String remainingTimeText;
+  final VpnStatus status;
+  final String trafficRemaining;
 
   @override
   Widget build(BuildContext context) {
@@ -48,70 +52,121 @@ class VpnControlPanel extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          PowerButton(
-            connected: connected,
-            busy: isBusy,
-            compact: compact,
-            onPressed: onPowerPressed,
-          ),
-          SizedBox(height: compact ? 14 : 22),
-          Text(
-            statusText,
-            style: const TextStyle(
-              color: Color(0xFF881337),
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
+          children: [
+            PowerButton(
+              connected: connected,
+              busy: isBusy,
+              compact: compact,
+              onPressed: onPowerPressed,
             ),
-          ),
-          if (message != null) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: compact ? 14 : 22),
             Text(
-              message!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
+              statusText,
+              style: const TextStyle(
+                color: Color(0xFF881337),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ],
-          SizedBox(height: compact ? 20 : 34),
-          const Text(
-            '剩余流量 1024.00 GB',
-            style: TextStyle(
-              color: Color(0xFF881337),
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if (isLoadingNodes)
-            const CircularProgressIndicator(color: Color(0xFFE11D48))
-          else if (node != null)
-            NodeSelector(
-              node: node!,
-              enabled: !connected && !isBusy,
-              onPressed: onNodePressed,
-            )
-          else
+            if (message != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                message!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
+              ),
+            ],
+            SizedBox(height: compact ? 20 : 34),
             Column(
               children: [
-                if (message != null) ...[
-                  Text(
-                    message!,
-                    textAlign: TextAlign.center,
-                    maxLines: 6,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                TextButton.icon(
-                  onPressed: onReloadNodes,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: Text(hasNodes ? '重新加载线路' : '加载线路'),
+                _InfoChip(
+                  icon: Icons.wifi_rounded,
+                  label: '流量',
+                  value: trafficRemaining,
+                ),
+                const SizedBox(height: 10),
+                _InfoChip(
+                  icon: Icons.timer_outlined,
+                  label: '时长',
+                  value: remainingTimeText,
                 ),
               ],
             ),
-        ],
+            const SizedBox(height: 10),
+            if (isLoadingNodes)
+              const CircularProgressIndicator(color: Color(0xFFE11D48))
+            else if (node != null)
+              NodeSelector(
+                node: node!,
+                enabled: !connected && !isBusy,
+                onPressed: onNodePressed,
+              )
+            else
+              Column(
+                children: [
+                  if (message != null) ...[
+                    Text(
+                      message!,
+                      textAlign: TextAlign.center,
+                      maxLines: 6,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  TextButton.icon(
+                    onPressed: onReloadNodes,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: Text(hasNodes ? '重新加载线路' : '加载线路'),
+                  ),
+                ],
+              ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.72),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFFE11D48)),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 46,
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
     );
   }

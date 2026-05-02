@@ -16,12 +16,15 @@ func ListPlans(c *gin.Context) {
 }
 
 type planReq struct {
-	Name         string   `json:"name" binding:"required"`
-	Price        float64  `json:"price" binding:"required"`
-	TrafficGB    *int     `json:"traffic_gb"`
-	DurationDays int      `json:"duration_days" binding:"required"`
-	SortOrder    int      `json:"sort_order"`
-	IsActive     *int8    `json:"is_active"`
+	Name             string   `json:"name" binding:"required"`
+	Price            float64  `json:"price" binding:"required"`
+	TrafficGB        *int     `json:"traffic_gb"`
+	DurationDays     int      `json:"duration_days" binding:"required"`
+	SortOrder        int      `json:"sort_order"`
+	IsActive         *int8    `json:"is_active"`
+	DiscountQuarter  *float64 `json:"discount_quarter"`   // 季付折扣率，如 0.95
+	DiscountHalfYear *float64 `json:"discount_half_year"` // 半年付折扣率
+	DiscountYear     *float64 `json:"discount_year"`      // 年付折扣率
 }
 
 // CreatePlan 新增套餐
@@ -38,12 +41,15 @@ func CreatePlan(c *gin.Context) {
 	}
 
 	plan := model.Plan{
-		Name:         req.Name,
-		Price:        req.Price,
-		TrafficGB:    req.TrafficGB,
-		DurationDays: req.DurationDays,
-		SortOrder:    req.SortOrder,
-		IsActive:     isActive,
+		Name:             req.Name,
+		Price:            req.Price,
+		TrafficGB:        req.TrafficGB,
+		DurationDays:     req.DurationDays,
+		SortOrder:        req.SortOrder,
+		IsActive:         isActive,
+		DiscountQuarter:  req.DiscountQuarter,
+		DiscountHalfYear: req.DiscountHalfYear,
+		DiscountYear:     req.DiscountYear,
 	}
 	database.DB.Create(&plan)
 	handler.OK(c, plan)
@@ -65,11 +71,14 @@ func UpdatePlan(c *gin.Context) {
 	}
 
 	updates := map[string]interface{}{
-		"name":          req.Name,
-		"price":         req.Price,
-		"traffic_gb":    req.TrafficGB,
-		"duration_days": req.DurationDays,
-		"sort_order":    req.SortOrder,
+		"name":               req.Name,
+		"price":              req.Price,
+		"traffic_gb":         req.TrafficGB,
+		"duration_days":      req.DurationDays,
+		"sort_order":         req.SortOrder,
+		"discount_quarter":   req.DiscountQuarter,
+		"discount_half_year": req.DiscountHalfYear,
+		"discount_year":      req.DiscountYear,
 	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive

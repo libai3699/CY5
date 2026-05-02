@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"math/rand"
 	"time"
 
 	"cy5vpn/server/internal/database"
@@ -18,7 +20,7 @@ type deviceRegisterReq struct {
 	AppVersion string `json:"app_version"`
 }
 
-// DeviceRegister 设备注册/更新（需要签名）
+// DeviceRegister 设备注册/更新（公开接口，无需签名）
 func DeviceRegister(c *gin.Context) {
 	var req deviceRegisterReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -33,9 +35,11 @@ func DeviceRegister(c *gin.Context) {
 	result := database.DB.Where("device_id = ?", req.DeviceID).First(&device)
 
 	if result.Error != nil {
-		// 新设备，创建
+		// 新设备，生成唯一 7 位展示 ID
+		displayID := generateUniqueDisplayID()
 		device = model.Device{
 			DeviceID:   req.DeviceID,
+			DisplayID:  displayID,
 			Brand:      req.Brand,
 			Model:      req.Model,
 			OSVersion:  req.OSVersion,
@@ -45,18 +49,34 @@ func DeviceRegister(c *gin.Context) {
 		}
 		database.DB.Create(&device)
 	} else {
-		// 已有设备，更新
+		// 已有设备，更新活跃信息
 		database.DB.Model(&device).Updates(map[string]interface{}{
-			"brand":       req.Brand,
-			"model":       req.Model,
-			"os_version":  req.OSVersion,
-			"app_version": req.AppVersion,
-			"last_ip":     ip,
+			"brand":        req.Brand,
+			"model":        req.Model,
+			"os_version":   req.OSVersion,
+			"app_version":  req.AppVersion,
+			"last_ip":      ip,
 			"last_seen_at": now,
 		})
 	}
 
-	handler.OK(c, gin.H{"device_id": req.DeviceID})
+	handler.OK(c, gin.H{
+		"device_id":  req.DeviceID,
+		"display_id": device.DisplayID,
+	})
+}
+
+// generateUniqueDisplayID 生成唯一的 7 位数字展示 ID（1000000~9999999）
+func generateUniqueDisplayID() string {
+	for {
+		n := 1_000_000 + rand.Intn(9_000_000)
+		id := fmt.Sprintf("%07d", n)
+		var count int64
+		database.DB.Model(&model.Device{}).Where("display_id = ?", id).Count(&count)
+		if count == 0 {
+			return id
+		}
+	}
 }
 
 type heartbeatReq struct {

@@ -14,11 +14,13 @@ func Migrate() {
 		&model.User{},
 		&model.Device{},
 		&model.Plan{},
+		&model.VpnLine{},
 		&model.OrderRecord{},
 		&model.AppConfig{},
 		&model.Notice{},
 		&model.UserLoginLog{},
 		&model.AdminLoginLog{},
+		&model.UserNoticeRead{},
 	)
 	if err != nil {
 		log.Fatalf("[migrate] 建表失败: %v", err)
@@ -27,6 +29,7 @@ func Migrate() {
 
 	seedAdmin()
 	seedPlans()
+	seedLines()
 	seedConfigs()
 }
 
@@ -73,6 +76,28 @@ func seedPlans() {
 	}
 	DB.Create(&plans)
 	log.Println("[migrate] 套餐初始数据写入完成")
+}
+
+func seedLines() {
+	var count int64
+	DB.Model(&model.VpnLine{}).Count(&count)
+	if count > 0 {
+		return
+	}
+
+	line := model.VpnLine{
+		Name:        "默认线路",
+		Region:      "Auto",
+		Protocol:    "SUBSCRIPTION",
+		Address:     "dash.xn--cp3a08l.com",
+		RawURI:      "https://dash.xn--cp3a08l.com/api/v1/pq/f2d013d8cfe32512bc9d23f13592a5a0",
+		SortOrder:   1,
+		IsDefault:   1,
+		IsActive:    1,
+		Description: "系统初始化默认线路，请在后台替换为真实可用线路。",
+	}
+	DB.Create(&line)
+	log.Println("[migrate] 线路初始数据写入完成")
 }
 
 // seedConfigs 初始化配置数据（幂等）

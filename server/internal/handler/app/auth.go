@@ -19,7 +19,6 @@ type registerReq struct {
 	Phone    string `json:"phone"`
 }
 
-// Register 用户注册
 func Register(c *gin.Context) {
 	var req registerReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -27,7 +26,6 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 检查用户名是否已存在
 	var count int64
 	database.DB.Model(&model.User{}).Where("username = ?", req.Username).Count(&count)
 	if count > 0 {
@@ -35,7 +33,13 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 哈希密码
+	var deviceUserCount int64
+	database.DB.Model(&model.User{}).Where("device_id = ?", req.DeviceID).Count(&deviceUserCount)
+	if deviceUserCount >= 3 {
+		handler.Fail(c, 1004, "本设备最多只能注册 3 个账号，请联系客服")
+		return
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	if err != nil {
 		handler.Fail(c, 500, "服务器错误")
@@ -55,15 +59,14 @@ func Register(c *gin.Context) {
 		handler.Fail(c, 500, "注册失败")
 		return
 	}
+	updateDeviceUser(req.DeviceID, user.ID)
 
-	// 注册成功，直接签发 token（自动登录）
 	token, err := config.GenerateUserToken(user.ID, user.DeviceID)
 	if err != nil {
 		handler.Fail(c, 500, "token 生成失败")
 		return
 	}
 
-	// 记录登录日志
 	writeUserLoginLog(c, user.ID, req.DeviceID, 1, "")
 
 	handler.OK(c, gin.H{
@@ -78,7 +81,6 @@ type loginReq struct {
 	DeviceID string `json:"device_id"`
 }
 
-// Login 用户登录
 func Login(c *gin.Context) {
 	var req loginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -104,13 +106,16 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 更新最后登录时间和设备
 	now := time.Now()
 	updates := map[string]interface{}{"last_login_at": now}
 	if req.DeviceID != "" {
 		updates["device_id"] = req.DeviceID
 	}
 	database.DB.Model(&user).Updates(updates)
+	if req.DeviceID != "" {
+		updateDeviceUser(req.DeviceID, user.ID)
+		user.DeviceID = req.DeviceID
+	}
 
 	token, err := config.GenerateUserToken(user.ID, user.DeviceID)
 	if err != nil {
@@ -126,21 +131,27 @@ func Login(c *gin.Context) {
 	})
 }
 
-// safeUser 返回安全的用户信息（不含密码）
+func updateDeviceUser(deviceID string, userID uint64) {
+	if deviceID == "" {
+		return
+	}
+	database.DB.Model(&model.Device{}).Where("device_id = ?", deviceID).Update("user_id", userID)
+}
+
 func safeUser(u model.User) gin.H {
 	return gin.H{
-		"id":                   u.ID,
-		"username":             u.Username,
-		"phone":                u.Phone,
-		"device_id":            u.DeviceID,
-		"free_used_seconds":    u.FreeUsedSeconds,
-		"free_limit_seconds":   u.FreeLimitSeconds,
-		"free_remaining":       u.FreeLimitSeconds - u.FreeUsedSeconds,
-		"current_plan_id":      u.CurrentPlanID,
-		"plan_expired_at":      u.PlanExpiredAt,
-		"traffic_used_bytes":   u.TrafficUsedBytes,
-		"traffic_limit_bytes":  u.TrafficLimitBytes,
-		"status":               u.Status,
+		"id":                  u.ID,
+		"username":            u.Username,
+		"phone":               u.Phone,
+		"device_id":           u.DeviceID,
+		"free_used_seconds":   u.FreeUsedSeconds,
+		"free_limit_seconds":  u.FreeLimitSeconds,
+		"free_remaining":      u.FreeLimitSeconds - u.FreeUsedSeconds,
+		"current_plan_id":     u.CurrentPlanID,
+		"plan_expired_at":     u.PlanExpiredAt,
+		"traffic_used_bytes":  u.TrafficUsedBytes,
+		"traffic_limit_bytes": u.TrafficLimitBytes,
+		"status":              u.Status,
 	}
 }
 

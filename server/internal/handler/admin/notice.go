@@ -4,6 +4,7 @@ import (
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/ws"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,10 +17,11 @@ func ListNotices(c *gin.Context) {
 }
 
 type noticeReq struct {
-	Content   string `json:"content" binding:"required"`
-	Type      int8   `json:"type"`
-	IsActive  *int8  `json:"is_active"`
-	SortOrder int    `json:"sort_order"`
+	TargetUserID *uint64 `json:"target_user_id"`
+	Content      string  `json:"content" binding:"required"`
+	Type         int8    `json:"type"`
+	IsActive     *int8   `json:"is_active"`
+	SortOrder    int     `json:"sort_order"`
 }
 
 // CreateNotice 新增通知
@@ -40,12 +42,16 @@ func CreateNotice(c *gin.Context) {
 	}
 
 	notice := model.Notice{
-		Content:   req.Content,
-		Type:      noticeType,
-		IsActive:  isActive,
-		SortOrder: req.SortOrder,
+		TargetUserID: req.TargetUserID,
+		Content:      req.Content,
+		Type:         noticeType,
+		IsActive:     isActive,
+		SortOrder:    req.SortOrder,
 	}
 	database.DB.Create(&notice)
+	if notice.TargetUserID != nil && notice.IsActive == 1 {
+		ws.Notices.Push(*notice.TargetUserID, notice)
+	}
 	handler.OK(c, notice)
 }
 
@@ -65,8 +71,9 @@ func UpdateNotice(c *gin.Context) {
 	}
 
 	updates := map[string]interface{}{
-		"content":    req.Content,
-		"sort_order": req.SortOrder,
+		"target_user_id": req.TargetUserID,
+		"content":        req.Content,
+		"sort_order":     req.SortOrder,
 	}
 	if req.Type != 0 {
 		updates["type"] = req.Type

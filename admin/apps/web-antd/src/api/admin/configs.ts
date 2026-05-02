@@ -11,5 +11,12 @@ export interface AppConfig {
 export const getConfigList = () =>
   requestClient.get<AppConfig[]>('/configs');
 
+export const createConfig = (data: {
+  key_name: string;
+  label: string;
+  sort_order?: number;
+  value?: string;
+}) => requestClient.post<AppConfig>('/configs', data);
+
 export const updateConfig = (key: string, value: string) =>
   requestClient.put(`/configs/${key}`, { value });

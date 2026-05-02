@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/vpn_node.dart';
+import 'node_label.dart';
 
 class NodeSelector extends StatelessWidget {
   const NodeSelector({
@@ -16,30 +17,31 @@ class NodeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: enabled ? onPressed : null,
-      style: TextButton.styleFrom(
-        foregroundColor: const Color(0xFF881337),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            '选择线路',
-            style: TextStyle(fontWeight: FontWeight.w700),
+    return GestureDetector(
+      onTap: enabled ? onPressed : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.72),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFFE11D48).withOpacity(0.18),
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              node.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            NodeLabel(node: node, fontSize: 15),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: enabled
+                  ? const Color(0xFF881337)
+                  : const Color(0xFF881337).withOpacity(0.35),
+              size: 20,
             ),
-          ),
-          const SizedBox(width: 4),
-          const Icon(Icons.keyboard_arrow_down_rounded),
-        ],
+          ],
+        ),
       ),
     );
   }

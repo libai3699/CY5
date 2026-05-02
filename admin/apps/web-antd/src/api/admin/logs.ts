@@ -15,6 +15,12 @@ export interface AdminLog {
   id: number;
   username: string;
   ip: string;
+  ip_detail?: {
+    ip: string;
+    is_private: boolean;
+    location: string;
+    type: string;
+  };
   user_agent: string;
   status: number;
   created_at: string;

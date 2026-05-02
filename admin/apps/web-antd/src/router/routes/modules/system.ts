@@ -40,7 +40,20 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    meta: { icon: 'carbon:settings', order: 3, title: '内容管理' },
+    meta: { icon: 'carbon:network-4', order: 3, title: '线路管理' },
+    name: 'LineMgmt',
+    path: '/lines',
+    children: [
+      {
+        name: 'LineListPage',
+        path: '/lines/list',
+        component: () => import('#/views/lines/LineListPage.vue'),
+        meta: { icon: 'carbon:network-4', title: '线路列表' },
+      },
+    ],
+  },
+  {
+    meta: { icon: 'carbon:settings', order: 4, title: '内容管理' },
     name: 'ContentMgmt',
     path: '/content',
     children: [
@@ -59,7 +72,7 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    meta: { icon: 'carbon:document', order: 4, title: '日志管理' },
+    meta: { icon: 'carbon:document', order: 5, title: '日志管理' },
     name: 'LogMgmt',
     path: '/logs',
     children: [

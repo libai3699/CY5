@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/vpn_node.dart';
 
 class VpnSubscriptionLoader {
@@ -18,12 +20,19 @@ class VpnSubscriptionLoader {
       final response = await request.close().timeout(const Duration(seconds: 25));
       final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 25));
 
+      debugPrint('[SUBSCRIPTION] status: ${response.statusCode}, body length: ${body.length}');
+      debugPrint('[SUBSCRIPTION] body preview: ${body.substring(0, body.length.clamp(0, 200))}');
+
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('订阅请求失败：HTTP ${response.statusCode}');
       }
 
       final content = _decodeSubscriptionBody(body);
+      debugPrint('[SUBSCRIPTION] decoded length: ${content.length}');
+      debugPrint('[SUBSCRIPTION] decoded preview: ${content.substring(0, content.length.clamp(0, 300))}');
+
       final nodes = _parseNodes(content);
+      debugPrint('[SUBSCRIPTION] parsed nodes: ${nodes.length}');
 
       if (nodes.isEmpty) {
         throw Exception('订阅中没有解析到可用线路，内容开头：${_previewContent(content)}');
@@ -48,14 +57,22 @@ class VpnSubscriptionLoader {
   String _decodeSubscriptionBody(String body) {
     final trimmed = body.trim();
 
+    // 如果内容已经是明文协议行（包含 ://），直接返回
     if (trimmed.contains('://')) {
       return trimmed;
     }
 
+    // 尝试 base64 解码（订阅通常是 base64 编码的）
     try {
-      final normalized = base64.normalize(trimmed);
-      return utf8.decode(base64.decode(normalized));
+      // 去掉换行符后再解码（有些订阅会有换行）
+      final noNewlines = trimmed.replaceAll(RegExp(r'\s'), '');
+      final normalized = base64.normalize(noNewlines);
+      final decoded = utf8.decode(base64.decode(normalized));
+      debugPrint('[SUBSCRIPTION] base64 decoded, length: ${decoded.length}');
+      return decoded;
     } on FormatException {
+      // base64 解码失败，原样返回
+      debugPrint('[SUBSCRIPTION] not base64, using raw content');
       return trimmed;
     }
   }

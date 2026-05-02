@@ -32,6 +32,7 @@ onMounted(load);
       </div>
       <el-table :data="list" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="display_id" label="展示ID" width="100" />
         <el-table-column prop="device_id" label="设备ID" show-overflow-tooltip />
         <el-table-column prop="user_id" label="用户ID" width="90" />
         <el-table-column prop="brand" label="品牌" width="100" />

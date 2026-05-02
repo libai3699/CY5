@@ -4,6 +4,7 @@ import (
 	"cy5vpn/server/internal/handler/admin"
 	"cy5vpn/server/internal/handler/app"
 	"cy5vpn/server/internal/middleware"
+	"cy5vpn/server/internal/ws"
 
 	"github.com/gin-gonic/gin"
 )
@@ -13,6 +14,23 @@ func Setup(r *gin.Engine) {
 	r.Use(middleware.CORS())
 	r.Use(middleware.Logger())
 	r.Static("/uploads", "./uploads")
+
+	publicGroup := r.Group("/api/public")
+	{
+		publicGroup.GET("/config", app.GetPublicConfig)
+		publicGroup.GET("/status", app.GetPublicAppStatus)
+		publicGroup.GET("/lines/default", app.GetDefaultLine)
+		publicGroup.GET("/notices", app.GetNotices)
+		publicGroup.GET("/plans", app.GetPlans)
+		publicGroup.GET("/contact", app.GetContactConfig)
+		publicGroup.GET("/user/notices", middleware.AuthRequired(), app.GetUserNotices)
+		publicGroup.GET("/user/status", middleware.AuthRequired(), app.GetUserStatus)
+		publicGroup.POST("/user/heartbeat", middleware.AuthRequired(), app.UserHeartbeat)
+		publicGroup.GET("/ws/notices", ws.Notices.ServeNoticeSocket)
+		publicGroup.POST("/device/register", app.DeviceRegister)
+		publicGroup.POST("/auth/register", app.Register)
+		publicGroup.POST("/auth/login", app.Login)
+	}
 
 	// ── 前台 API（Flutter 调用）──────────────────────────────────
 	appGroup := r.Group("/api/app")
@@ -39,6 +57,10 @@ func Setup(r *gin.Engine) {
 		{
 			userGroup.GET("/profile", app.GetProfile)
 			userGroup.GET("/orders", app.GetOrders)
+			userGroup.GET("/line", app.GetUserLine)
+			userGroup.GET("/notices", app.GetUserNotices)
+			userGroup.POST("/notices/:id/read", app.MarkNoticeRead)
+			userGroup.POST("/notices/read-all", app.MarkAllNoticesRead)
 		}
 	}
 
@@ -80,7 +102,15 @@ func Setup(r *gin.Engine) {
 
 			// 配置管理
 			authGroup.GET("/configs", admin.ListConfigs)
+			authGroup.POST("/configs", admin.CreateConfig)
 			authGroup.PUT("/configs/:key", admin.UpdateConfig)
+
+			// 线路管理
+			authGroup.GET("/lines", admin.ListLines)
+			authGroup.POST("/lines", admin.CreateLine)
+			authGroup.PUT("/lines/:id", admin.UpdateLine)
+			authGroup.DELETE("/lines/:id", admin.DeleteLine)
+			authGroup.POST("/users/assign-line", admin.AssignUserLine)
 
 			// 通知管理
 			authGroup.GET("/notices", admin.ListNotices)

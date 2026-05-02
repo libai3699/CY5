@@ -44,6 +44,9 @@ export interface DeviceItem {
 }
 
 export interface PlanItem {
+  discount_half_year?: number | null;
+  discount_quarter?: number | null;
+  discount_year?: number | null;
   duration_days: number;
   id: number;
   is_active: 0 | 1;
@@ -82,6 +85,7 @@ export interface NoticeItem {
   id: number;
   is_active: 0 | 1;
   sort_order: number;
+  target_user_id?: number | null;
   type: 1 | 2;
 }
 

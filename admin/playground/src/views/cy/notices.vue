@@ -11,10 +11,11 @@ const loading = ref(false);
 const rows = ref<NoticeItem[]>([]);
 const open = ref(false);
 const editing = ref<NoticeItem | null>(null);
-const form = reactive<any>({ content: '', is_active: 1, sort_order: 0, type: 1 });
+const form = reactive<any>({ content: '', is_active: 1, sort_order: 0, target_user_id: null, type: 1 });
 const columns = [
   { dataIndex: 'id', title: 'ID', width: 80 },
   { dataIndex: 'content', title: '内容' },
+  { dataIndex: 'target_user_id', title: '目标用户', width: 120 },
   { dataIndex: 'type', title: '类型', width: 100 },
   { dataIndex: 'is_active', title: '显示', width: 90 },
   { dataIndex: 'sort_order', title: '排序', width: 90 },
@@ -32,19 +33,21 @@ async function load() {
 
 function create() {
   editing.value = null;
-  Object.assign(form, { content: '', is_active: 1, sort_order: 0, type: 1 });
+  Object.assign(form, { content: '', is_active: 1, sort_order: 0, target_user_id: null, type: 1 });
   open.value = true;
 }
 
 function edit(row: NoticeItem) {
   editing.value = row;
   Object.assign(form, row);
+  form.target_user_id = row.target_user_id ?? null;
   open.value = true;
 }
 
 async function save() {
-  if (editing.value) await updateNotice(editing.value.id, form);
-  else await createNotice(form);
+  const data = { ...form, target_user_id: form.target_user_id || null };
+  if (editing.value) await updateNotice(editing.value.id, data);
+  else await createNotice(data);
   message.success('已保存');
   open.value = false;
   await load();
@@ -64,9 +67,10 @@ onMounted(load);
     <Button class="mb-4" type="primary" @click="create">新增通知</Button>
     <Table :columns="columns" :data-source="rows" :loading="loading" :pagination="false" row-key="id">
       <template #bodyCell="{ column, record }">
+        <template v-if="column.dataIndex === 'target_user_id'">{{ record.target_user_id ?? '公共' }}</template>
         <template v-if="column.dataIndex === 'type'">{{ record.type === 2 ? '重要' : '普通' }}</template>
         <template v-if="column.dataIndex === 'is_active'">
-          <Switch :checked="record.is_active === 1" @change="(v)=>updateNotice(record.id,{...record,is_active:v?1:0}).then(load)" />
+          <Switch :checked="record.is_active === 1" @change="(v) => updateNotice(record.id, { ...record, is_active: v ? 1 : 0 }).then(load)" />
         </template>
         <template v-if="column.dataIndex === 'action'">
           <Space>
@@ -79,7 +83,8 @@ onMounted(load);
     <Modal v-model:open="open" title="通知" @ok="save">
       <Form layout="vertical">
         <Form.Item label="内容" required><Input.TextArea v-model:value="form.content" :rows="4" /></Form.Item>
-        <Form.Item label="类型"><Select v-model:value="form.type" :options="[{label:'普通',value:1},{label:'重要',value:2}]" /></Form.Item>
+        <Form.Item label="目标用户ID"><InputNumber v-model:value="form.target_user_id" class="w-full" :min="1" placeholder="留空为公共通知" /></Form.Item>
+        <Form.Item label="类型"><Select v-model:value="form.type" :options="[{ label: '普通', value: 1 }, { label: '重要', value: 2 }]" /></Form.Item>
         <Form.Item label="排序"><InputNumber v-model:value="form.sort_order" class="w-full" /></Form.Item>
         <Form.Item label="显示"><Switch v-model:checked="form.is_active" :checked-value="1" :un-checked-value="0" /></Form.Item>
       </Form>

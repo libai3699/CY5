@@ -8,6 +8,7 @@ export interface User {
   device_id: string;
   free_used_seconds: number;
   free_limit_seconds: number;
+  current_line_id: number | null;
   current_plan_id: number | null;
   plan_expired_at: string | null;
   traffic_used_bytes: number;

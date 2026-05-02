@@ -8,18 +8,43 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ListConfigs 配置列表
 func ListConfigs(c *gin.Context) {
 	var configs []model.AppConfig
 	database.DB.Order("sort_order asc").Find(&configs)
 	handler.OK(c, configs)
 }
 
+type createConfigReq struct {
+	KeyName   string `json:"key_name" binding:"required"`
+	Value     string `json:"value"`
+	Label     string `json:"label" binding:"required"`
+	SortOrder int    `json:"sort_order"`
+}
+
+func CreateConfig(c *gin.Context) {
+	var req createConfigReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		handler.Fail(c, 400, "参数错误: "+err.Error())
+		return
+	}
+
+	cfg := model.AppConfig{
+		KeyName:   req.KeyName,
+		Value:     req.Value,
+		Label:     req.Label,
+		SortOrder: req.SortOrder,
+	}
+	if err := database.DB.Create(&cfg).Error; err != nil {
+		handler.Fail(c, 400, "配置键已存在或保存失败")
+		return
+	}
+	handler.OK(c, cfg)
+}
+
 type updateConfigReq struct {
 	Value string `json:"value"`
 }
 
-// UpdateConfig 更新配置
 func UpdateConfig(c *gin.Context) {
 	key := c.Param("key")
 

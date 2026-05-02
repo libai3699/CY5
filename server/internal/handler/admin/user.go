@@ -176,6 +176,7 @@ func safeUserAdmin(u model.User) gin.H {
 		"status":              u.Status,
 		"free_used_seconds":   u.FreeUsedSeconds,
 		"free_limit_seconds":  u.FreeLimitSeconds,
+		"current_line_id":     u.CurrentLineID,
 		"current_plan_id":     u.CurrentPlanID,
 		"plan_expired_at":     u.PlanExpiredAt,
 		"traffic_used_bytes":  u.TrafficUsedBytes,
