@@ -1,0 +1,37 @@
+# ===== Go (server/) =====
+server/bin/
+server/*.exe
+server/.env
+server/go.sum
+
+# ===== Flutter =====
+flutter/.dart_tool/
+flutter/.flutter-plugins
+flutter/.flutter-plugins-dependencies
+flutter/build/
+flutter/.fvm/versions/
+flutter/pubspec.lock
+flutter/android/.gradle/
+flutter/android/local.properties
+flutter/android/app/debug/
+flutter/android/app/profile/
+flutter/android/app/release/
+flutter/windows/flutter/ephemeral/
+
+# ===== Admin (Vue) =====
+admin/node_modules/
+admin/dist/
+admin/.env.local
+admin/.env.*.local
+admin/apps/*/node_modules/
+admin/apps/*/dist/
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.iml
