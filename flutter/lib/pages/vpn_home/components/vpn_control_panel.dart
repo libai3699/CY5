@@ -142,29 +142,25 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      constraints: const BoxConstraints(minWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.72),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 16, color: const Color(0xFFE11D48)),
           const SizedBox(width: 8),
-          SizedBox(
-            width: 46,
-            child: Text(
-              label,
-              style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12, fontWeight: FontWeight.w700),
-            ),
+          Text(
+            label,
+            style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12, fontWeight: FontWeight.w700),
           ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w800),
-            ),
+          const SizedBox(width: 28),
+          Text(
+            value,
+            style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w800),
           ),
         ],
       ),

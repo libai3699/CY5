@@ -18,6 +18,7 @@ import 'data/api_config.dart';
 import 'data/device_identity.dart';
 import 'data/remote_app_loader.dart';
 import 'data/remote_vpn_line_loader.dart';
+import 'login_devices_page.dart';
 import 'models/app_status.dart';
 import 'models/vpn_node.dart';
 import 'models/vpn_status.dart';
@@ -47,7 +48,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
     planLevel: '免费体验',
     remainingSeconds: 0,
     remainingTimeText: '未知',
-    trafficRemaining: '1024.00 GB',
+    trafficRemaining: '不限流量',
   );
   Map<String, String> _appConfig = const {};
   VpnStatus _status = VpnStatus.disconnected;
@@ -200,12 +201,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   void _syncHeartbeatTimer() {
     _heartbeatTimer?.cancel();
+    _sendHeartbeat(seconds: 1);
     _heartbeatTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) _sendHeartbeat();
+      if (mounted) _sendHeartbeat(seconds: 60);
     });
   }
 
-  Future<void> _sendHeartbeat() async {
+  Future<void> _sendHeartbeat({required int seconds}) async {
     final token = _session?.token;
     if (token == null || token.isEmpty || !_isConnected) return;
     final client = HttpClient();
@@ -213,7 +215,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       final request = await client.postUrl(Uri.parse(kUserHeartbeatApiUrl));
       request.headers.contentType = ContentType.json;
       request.headers.set('Authorization', 'Bearer $token');
-      request.write(jsonEncode({'seconds': 60}));
+      request.write(jsonEncode({'seconds': seconds}));
       final response = await request.close();
       await response.drain<void>();
       await _loadAppData();
@@ -234,7 +236,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         planLevel: _appStatus.planLevel,
         remainingSeconds: session.freeRemaining,
         remainingTimeText: _formatRemainingTime(session.freeRemaining),
-        trafficRemaining: _appStatus.trafficRemaining,
+        trafficRemaining: '不限流量',
       );
     });
   }
@@ -450,6 +452,32 @@ class _VpnHomePageState extends State<VpnHomePage> {
     await _loadAppData();
   }
 
+  Future<void> _logoutCurrentDevice() async {
+    final token = _session?.token;
+    if (token == null || token.isEmpty) return;
+    await _disconnect();
+    await _authService.logout(token);
+    if (!mounted) return;
+    setState(() {
+      _session = null;
+      _appStatus = const AppStatus(
+        planLevel: '免费体验',
+        remainingSeconds: 0,
+        remainingTimeText: '未登录',
+        trafficRemaining: '不限流量',
+      );
+      _message = '已退出当前设备';
+    });
+  }
+
+  void _openLoginDevicesPage() {
+    final token = _session?.token;
+    if (token == null || token.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => LoginDevicesPage(token: token)),
+    );
+  }
+
   void _openNoticesPage() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const NoticesPage()),
@@ -499,6 +527,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
         deviceId: _deviceId.isEmpty ? '读取中' : _deviceId,
         isRefreshingLines: _isRefreshingLines,
         onLoginPressed: _openAuthPage,
+        onDevicesPressed: _openLoginDevicesPage,
+        onLogoutPressed: _logoutCurrentDevice,
         onNoticesPressed: _openNoticesPage,
         onPurchasePressed: _openPurchasePage,
         onRefreshLines: _refreshLinesFromDrawer,

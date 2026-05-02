@@ -26,10 +26,7 @@ func GetProfile(c *gin.Context) {
 		user.PlanExpiredAt != nil &&
 		user.PlanExpiredAt.After(time.Now())
 
-	remaining := user.FreeLimitSeconds - user.FreeUsedSeconds
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := freeRemaining(user)
 
 	handler.OK(c, gin.H{
 		"user":           safeUser(user),
@@ -51,10 +48,7 @@ func GetUserStatus(c *gin.Context) {
 		user.PlanExpiredAt != nil &&
 		user.PlanExpiredAt.After(time.Now())
 
-	remaining := user.FreeLimitSeconds - user.FreeUsedSeconds
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := freeRemaining(user)
 
 	planLevel := "免费体验"
 	remainingSeconds := remaining
@@ -64,7 +58,7 @@ func GetUserStatus(c *gin.Context) {
 	}
 
 	trafficRemaining := "不限流量"
-	if user.TrafficLimitBytes != nil {
+	if hasPlan && user.TrafficLimitBytes != nil {
 		left := *user.TrafficLimitBytes - user.TrafficUsedBytes
 		if left < 0 {
 			left = 0
@@ -116,10 +110,7 @@ func UserHeartbeat(c *gin.Context) {
 		user.FreeUsedSeconds = used
 	}
 
-	remaining := user.FreeLimitSeconds - user.FreeUsedSeconds
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := freeRemaining(user)
 	if hasPlan {
 		remaining = int(time.Until(*user.PlanExpiredAt).Seconds())
 	}
@@ -131,9 +122,46 @@ func UserHeartbeat(c *gin.Context) {
 	})
 }
 
+func ListLoginDevices(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	var devices []model.Device
+	database.DB.Where("user_id = ?", userID).Order("last_seen_at desc, updated_at desc").Find(&devices)
+	handler.OK(c, devices)
+}
+
+func LogoutCurrentDevice(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	deviceID := c.GetString("device_id")
+	database.DB.Model(&model.Device{}).Where("device_id = ? AND user_id = ?", deviceID, userID).Updates(map[string]interface{}{"user_id": nil})
+	handler.OK(c, gin.H{"msg": "退出成功"})
+}
+
+func RemoveLoginDevice(c *gin.Context) {
+	userID := c.GetUint64("user_id")
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		handler.Fail(c, 400, "参数错误")
+		return
+	}
+	database.DB.Model(&model.Device{}).Where("id = ? AND user_id = ?", id, userID).Updates(map[string]interface{}{"user_id": nil})
+	handler.OK(c, gin.H{"msg": "移除成功"})
+}
+
 func formatGB(bytes int64) string {
 	gb := float64(bytes) / 1024 / 1024 / 1024
 	return strconv.FormatFloat(gb, 'f', 2, 64) + " GB"
+}
+
+func freeRemaining(user model.User) int {
+	usedRemaining := user.FreeLimitSeconds - user.FreeUsedSeconds
+	elapsedRemaining := user.FreeLimitSeconds - int(time.Since(user.CreatedAt).Seconds())
+	if elapsedRemaining < usedRemaining {
+		usedRemaining = elapsedRemaining
+	}
+	if usedRemaining < 0 {
+		return 0
+	}
+	return usedRemaining
 }
 
 // GetOrders 获取购买历史

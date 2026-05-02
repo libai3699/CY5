@@ -1,6 +1,7 @@
 package app
 
 import (
+	"regexp"
 	"time"
 
 	"cy5vpn/server/internal/config"
@@ -13,16 +14,25 @@ import (
 )
 
 type registerReq struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
+	Username string `json:"username" binding:"required,min=6,max=32"`
 	Password string `json:"password" binding:"required,min=6,max=64"`
 	DeviceID string `json:"device_id" binding:"required"`
 	Phone    string `json:"phone"`
 }
 
+var (
+	usernameLetterRE = regexp.MustCompile(`[A-Za-z]`)
+	usernameDigitRE  = regexp.MustCompile(`\d`)
+)
+
 func Register(c *gin.Context) {
 	var req registerReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handler.Fail(c, 400, "参数错误: "+err.Error())
+		return
+	}
+	if !usernameLetterRE.MatchString(req.Username) || !usernameDigitRE.MatchString(req.Username) {
+		handler.Fail(c, 400, "账号至少6位，且必须同时包含字母和数字")
 		return
 	}
 
@@ -109,6 +119,10 @@ func Login(c *gin.Context) {
 	now := time.Now()
 	updates := map[string]interface{}{"last_login_at": now}
 	if req.DeviceID != "" {
+		if !canLoginDevice(user, req.DeviceID) {
+			handler.Fail(c, 1005, "登录设备数量已达当前套餐上限，请先移除其他设备")
+			return
+		}
 		updates["device_id"] = req.DeviceID
 	}
 	database.DB.Model(&user).Updates(updates)
@@ -138,6 +152,25 @@ func updateDeviceUser(deviceID string, userID uint64) {
 	database.DB.Model(&model.Device{}).Where("device_id = ?", deviceID).Update("user_id", userID)
 }
 
+func canLoginDevice(user model.User, deviceID string) bool {
+	var bound model.Device
+	if err := database.DB.Where("device_id = ? AND user_id = ?", deviceID, user.ID).First(&bound).Error; err == nil {
+		return true
+	}
+
+	maxDevices := 1
+	if user.CurrentPlanID != nil && user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now()) {
+		var plan model.Plan
+		if err := database.DB.First(&plan, *user.CurrentPlanID).Error; err == nil && plan.MaxDevices > 0 {
+			maxDevices = plan.MaxDevices
+		}
+	}
+
+	var count int64
+	database.DB.Model(&model.Device{}).Where("user_id = ?", user.ID).Count(&count)
+	return count < int64(maxDevices)
+}
+
 func safeUser(u model.User) gin.H {
 	return gin.H{
 		"id":                  u.ID,
@@ -146,7 +179,7 @@ func safeUser(u model.User) gin.H {
 		"device_id":           u.DeviceID,
 		"free_used_seconds":   u.FreeUsedSeconds,
 		"free_limit_seconds":  u.FreeLimitSeconds,
-		"free_remaining":      u.FreeLimitSeconds - u.FreeUsedSeconds,
+		"free_remaining":      freeRemaining(u),
 		"current_plan_id":     u.CurrentPlanID,
 		"plan_expired_at":     u.PlanExpiredAt,
 		"traffic_used_bytes":  u.TrafficUsedBytes,

@@ -14,6 +14,7 @@ const form = reactive({
   discount_year: null as number | null,
   duration_days: 30,
   is_active: 1,
+  max_devices: 1,
   name: '',
   price: 0,
   sort_order: 0,
@@ -32,6 +33,7 @@ function resetForm() {
     discount_year: null,
     duration_days: 30,
     is_active: 1,
+    max_devices: 1,
     name: '',
     price: 0,
     sort_order: 0,
@@ -95,6 +97,7 @@ onMounted(load);
           <template #default="{ row }">{{ row.traffic_gb ? `${row.traffic_gb} GB` : '无限' }}</template>
         </el-table-column>
         <el-table-column prop="duration_days" label="有效期(天)" width="110" />
+        <el-table-column prop="max_devices" label="设备数" width="90" />
         <el-table-column label="季付" width="90"><template #default="{ row }">{{ formatDiscount(row.discount_quarter) }}</template></el-table-column>
         <el-table-column label="半年付" width="90"><template #default="{ row }">{{ formatDiscount(row.discount_half_year) }}</template></el-table-column>
         <el-table-column label="年付" width="90"><template #default="{ row }">{{ formatDiscount(row.discount_year) }}</template></el-table-column>
@@ -119,6 +122,7 @@ onMounted(load);
         <el-form-item label="月付原价(元)" required><el-input-number v-model="form.price" :min="0" :precision="2" style="width:100%" /></el-form-item>
         <el-form-item label="流量(GB)"><el-input-number v-model="form.traffic_gb" :min="1" style="width:100%" placeholder="留空=无限" /></el-form-item>
         <el-form-item label="有效期(天)" required><el-input-number v-model="form.duration_days" :min="1" style="width:100%" /></el-form-item>
+        <el-form-item label="可登录设备数" required><el-input-number v-model="form.max_devices" :min="1" style="width:100%" /></el-form-item>
         <el-form-item label="季付折扣率"><el-input-number v-model="form.discount_quarter" :min="0.01" :max="1" :step="0.01" :precision="2" style="width:100%" placeholder="如 0.95" /></el-form-item>
         <el-form-item label="半年付折扣率"><el-input-number v-model="form.discount_half_year" :min="0.01" :max="1" :step="0.01" :precision="2" style="width:100%" placeholder="如 0.90" /></el-form-item>
         <el-form-item label="年付折扣率"><el-input-number v-model="form.discount_year" :min="0.01" :max="1" :step="0.01" :precision="2" style="width:100%" placeholder="如 0.85" /></el-form-item>

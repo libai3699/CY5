@@ -30,14 +30,14 @@ class RemoteVpnLineLoader {
         debugPrint('[VPN_LINE] after filter: ${filtered.length}');
 
         if (filtered.isEmpty) {
-          // 过滤后为空则回退到全部节点（至少能用）
-          debugPrint('[VPN_LINE] filter result empty, using all nodes');
-          await _saveCacheList(allNodes);
-          return allNodes;
+          debugPrint('[VPN_LINE] filter result empty');
+          await _saveCacheList(const []);
+          return const [];
         }
 
-        await _saveCacheList(filtered);
-        return filtered;
+        final normalized = _normalizeNodeIds(_compactNodes(filtered));
+        await _saveCacheList(normalized);
+        return normalized;
       }
 
       // rawUri 是直接的协议链接（vmess:// 等）
@@ -48,8 +48,11 @@ class RemoteVpnLineLoader {
       debugPrint('[VPN_LINE] load error: $e');
       final cached = await _readCacheList();
       if (cached != null && cached.isNotEmpty) {
-        debugPrint('[VPN_LINE] using cached ${cached.length} nodes');
-        return cached;
+        final filteredCached = _normalizeNodeIds(
+          _compactNodes(cached.where((n) => _hasKnownRegion(n.name)).toList()),
+        );
+        debugPrint('[VPN_LINE] using filtered cached ${filteredCached.length} nodes');
+        return filteredCached;
       }
       rethrow;
     }
@@ -101,6 +104,53 @@ class RemoteVpnLineLoader {
       }
     }
     return false;
+  }
+
+  List<VpnNode> _normalizeNodeIds(List<VpnNode> nodes) {
+    return [
+      for (var i = 0; i < nodes.length; i++)
+        VpnNode(
+          id: nodes[i].id.startsWith('filtered-') ? nodes[i].id : 'filtered-$i-${nodes[i].id}',
+          name: nodes[i].name,
+          region: nodes[i].region,
+          protocol: nodes[i].protocol,
+          address: nodes[i].address,
+          rawUri: nodes[i].rawUri,
+        ),
+    ];
+  }
+
+  List<VpnNode> _compactNodes(List<VpnNode> nodes) {
+    final seen = <String>{};
+    final result = <VpnNode>[];
+    for (final node in nodes) {
+      final name = _displayNodeName(node.name);
+      final key = name.toLowerCase();
+      if (!seen.add(key)) continue;
+      result.add(VpnNode(
+        id: node.id,
+        name: name,
+        region: node.region,
+        protocol: node.protocol,
+        address: node.address,
+        rawUri: node.rawUri,
+      ));
+    }
+    return result;
+  }
+
+  String _displayNodeName(String rawName) {
+    var name = rawName.trim();
+    for (final separator in ['|', ' - ']) {
+      final index = name.indexOf(separator);
+      if (index > 0) name = name.substring(0, index).trim();
+    }
+    name = name.replaceAll(RegExp(r'\s+'), ' ');
+    final flag = RegExp(r'^([\u{1F1E6}-\u{1F1FF}]{2})\s*', unicode: true).firstMatch(name);
+    if (flag == null) return name;
+    final rest = name.substring(flag.end).trim();
+    final region = rest.replaceFirst(RegExp(r'[-_\s]*\d+\s*$'), '').trim();
+    return region.isEmpty ? flag.group(1)! : '${flag.group(1)!} $region';
   }
 
   Future<VpnNode> _fetchRemoteLine() async {

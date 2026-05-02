@@ -20,6 +20,7 @@ type planReq struct {
 	Price            float64  `json:"price" binding:"required"`
 	TrafficGB        *int     `json:"traffic_gb"`
 	DurationDays     int      `json:"duration_days" binding:"required"`
+	MaxDevices       int      `json:"max_devices"`
 	SortOrder        int      `json:"sort_order"`
 	IsActive         *int8    `json:"is_active"`
 	DiscountQuarter  *float64 `json:"discount_quarter"`   // 季付折扣率，如 0.95
@@ -39,12 +40,16 @@ func CreatePlan(c *gin.Context) {
 	if req.IsActive != nil {
 		isActive = *req.IsActive
 	}
+	if req.MaxDevices < 1 {
+		req.MaxDevices = 1
+	}
 
 	plan := model.Plan{
 		Name:             req.Name,
 		Price:            req.Price,
 		TrafficGB:        req.TrafficGB,
 		DurationDays:     req.DurationDays,
+		MaxDevices:       req.MaxDevices,
 		SortOrder:        req.SortOrder,
 		IsActive:         isActive,
 		DiscountQuarter:  req.DiscountQuarter,
@@ -69,12 +74,16 @@ func UpdatePlan(c *gin.Context) {
 		handler.Fail(c, 400, "参数错误")
 		return
 	}
+	if req.MaxDevices < 1 {
+		req.MaxDevices = 1
+	}
 
 	updates := map[string]interface{}{
 		"name":               req.Name,
 		"price":              req.Price,
 		"traffic_gb":         req.TrafficGB,
 		"duration_days":      req.DurationDays,
+		"max_devices":        req.MaxDevices,
 		"sort_order":         req.SortOrder,
 		"discount_quarter":   req.DiscountQuarter,
 		"discount_half_year": req.DiscountHalfYear,

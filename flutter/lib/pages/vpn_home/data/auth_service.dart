@@ -82,6 +82,56 @@ class AuthService {
     await file.writeAsString(jsonEncode(session.toJson()));
   }
 
+  Future<void> logout(String token) async {
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse(kUserLogoutApiUrl));
+      request.headers.set('Authorization', 'Bearer $token');
+      final response = await request.close();
+      await response.drain<void>();
+    } finally {
+      client.close(force: true);
+      await clearSession();
+    }
+  }
+
+  Future<List<LoginDevice>> loadDevices(String token) async {
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(Uri.parse(kUserDevicesApiUrl));
+      request.headers.set('Authorization', 'Bearer $token');
+      final response = await request.close();
+      final raw = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(raw);
+      final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
+      if (data is List) {
+        return data.whereType<Map<String, dynamic>>().map(LoginDevice.fromJson).toList();
+      }
+      return const [];
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> removeDevice(String token, int id) async {
+    final client = HttpClient();
+    try {
+      final request = await client.deleteUrl(Uri.parse('$kUserDevicesApiUrl/$id'));
+      request.headers.set('Authorization', 'Bearer $token');
+      final response = await request.close();
+      await response.drain<void>();
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> clearSession() async {
+    final file = await _sessionFile();
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+
   Future<AuthSession> _postAuth(String url, Map<String, dynamic> body) async {
     final client = HttpClient();
     try {
@@ -106,5 +156,31 @@ class AuthService {
   Future<File> _sessionFile() async {
     final dir = await getApplicationSupportDirectory();
     return File(p.join(dir.path, 'auth_session.json'));
+  }
+}
+
+class LoginDevice {
+  const LoginDevice({
+    required this.id,
+    required this.displayId,
+    required this.name,
+    required this.lastSeenAt,
+  });
+
+  final int id;
+  final String displayId;
+  final String name;
+  final String lastSeenAt;
+
+  factory LoginDevice.fromJson(Map<String, dynamic> json) {
+    final brand = json['brand']?.toString() ?? '';
+    final model = json['model']?.toString() ?? '';
+    final name = [brand, model].where((item) => item.isNotEmpty).join(' ');
+    return LoginDevice(
+      id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
+      displayId: json['display_id']?.toString() ?? json['device_id']?.toString() ?? '',
+      name: name.isEmpty ? '未知设备' : name,
+      lastSeenAt: json['last_seen_at']?.toString() ?? '',
+    );
   }
 }

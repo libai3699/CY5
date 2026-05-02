@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"cy5vpn/server/internal/config"
+	"cy5vpn/server/internal/database"
+	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -32,6 +34,14 @@ func AuthRequired() gin.HandlerFunc {
 		if err != nil || !t.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "token 无效或已过期"})
 			return
+		}
+		if claims.DeviceID != "" {
+			var count int64
+			database.DB.Model(&model.Device{}).Where("device_id = ? AND user_id = ?", claims.DeviceID, claims.UserID).Count(&count)
+			if count == 0 {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "设备已退出，请重新登录"})
+				return
+			}
 		}
 
 		c.Set("user_id", claims.UserID)

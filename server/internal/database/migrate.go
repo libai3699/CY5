@@ -69,10 +69,10 @@ func seedPlans() {
 	gb100 := 100
 
 	plans := []model.Plan{
-		{Name: "基础版", Price: 9.9, TrafficGB: &gb15, DurationDays: 30, SortOrder: 1, IsActive: 1},
-		{Name: "标准版", Price: 19.9, TrafficGB: &gb50, DurationDays: 30, SortOrder: 2, IsActive: 1},
-		{Name: "高级版", Price: 29.9, TrafficGB: &gb100, DurationDays: 30, SortOrder: 3, IsActive: 1},
-		{Name: "无限版", Price: 69.9, TrafficGB: nil, DurationDays: 30, SortOrder: 4, IsActive: 1},
+		{Name: "基础版", Price: 9.9, TrafficGB: &gb15, DurationDays: 30, MaxDevices: 1, SortOrder: 1, IsActive: 1},
+		{Name: "标准版", Price: 19.9, TrafficGB: &gb50, DurationDays: 30, MaxDevices: 2, SortOrder: 2, IsActive: 1},
+		{Name: "高级版", Price: 29.9, TrafficGB: &gb100, DurationDays: 30, MaxDevices: 3, SortOrder: 3, IsActive: 1},
+		{Name: "无限版", Price: 69.9, TrafficGB: nil, DurationDays: 30, MaxDevices: 5, SortOrder: 4, IsActive: 1},
 	}
 	DB.Create(&plans)
 	log.Println("[migrate] 套餐初始数据写入完成")

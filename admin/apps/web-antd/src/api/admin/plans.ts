@@ -11,6 +11,7 @@ export interface Plan {
   duration_days: number;
   sort_order: number;
   is_active: number;
+  max_devices: number;
   created_at: string;
 }
 

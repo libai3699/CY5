@@ -23,22 +23,15 @@ func GetPublicConfig(c *gin.Context) {
 }
 
 func GetPublicAppStatus(c *gin.Context) {
-	var plan model.Plan
-	database.DB.Where("is_active = 1").Order("sort_order asc, id asc").First(&plan)
-
-	remainingSeconds := 12*24*60*60 + 14*60
+	remainingSeconds := 0
 	planLevel := "免费体验"
-	if plan.ID != 0 {
-		planLevel = plan.Name
-		remainingSeconds = plan.DurationDays * 24 * 60 * 60
-	}
 
 	handler.OK(c, gin.H{
 		"plan_level":          planLevel,
 		"remaining_seconds":   remainingSeconds,
-		"traffic_remaining":   "1024.00 GB",
+		"traffic_remaining":   "不限流量",
 		"server_time":         time.Now().Unix(),
-		"remaining_time_text": formatRemainingTime(remainingSeconds),
+		"remaining_time_text": "未登录",
 	})
 }
 

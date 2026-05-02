@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { getOrderList, createOrder, type Order } from '#/api/admin/orders';
 import { getPlanList, type Plan } from '#/api/admin/plans';
@@ -10,7 +10,18 @@ const total = ref(0);
 const page = reactive({ current: 1, size: 20 });
 const dialogVisible = ref(false);
 const plans = ref<Plan[]>([]);
-const form = reactive({ user_id: undefined as number | undefined, plan_id: undefined as number | undefined, remark: '' });
+const form = reactive({
+  billing_cycle: 'month',
+  plan_id: undefined as number | undefined,
+  remark: '',
+  user_id: undefined as number | undefined,
+});
+const cycleOptions = [
+  { label: '月付', value: 'month' },
+  { label: '季付', value: 'quarter' },
+  { label: '半年付', value: 'half_year' },
+  { label: '年付', value: 'year' },
+];
 
 async function load() {
   loading.value = true;
@@ -22,13 +33,18 @@ async function load() {
 
 async function openCreate() {
   plans.value = await getPlanList() ?? [];
-  Object.assign(form, { user_id: undefined, plan_id: undefined, remark: '' });
+  Object.assign(form, { billing_cycle: 'month', user_id: undefined, plan_id: undefined, remark: '' });
   dialogVisible.value = true;
 }
 
 async function handleSubmit() {
   if (!form.user_id || !form.plan_id) { ElMessage.warning('请填写用户ID和套餐'); return; }
-  await createOrder({ user_id: form.user_id, plan_id: form.plan_id, remark: form.remark });
+  await createOrder({
+    billing_cycle: form.billing_cycle as 'half_year' | 'month' | 'quarter' | 'year',
+    user_id: form.user_id,
+    plan_id: form.plan_id,
+    remark: form.remark,
+  });
   ElMessage.success('开通成功'); dialogVisible.value = false; load();
 }
 
@@ -66,6 +82,11 @@ onMounted(load);
         <el-form-item label="套餐" required>
           <el-select v-model="form.plan_id" style="width:100%">
             <el-option v-for="p in plans" :key="p.id" :value="p.id" :label="`${p.name} - ¥${p.price} / ${p.duration_days}天`" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="开通周期" required>
+          <el-select v-model="form.billing_cycle" style="width:100%">
+            <el-option v-for="item in cycleOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" /></el-form-item>

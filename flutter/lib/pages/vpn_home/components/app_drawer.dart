@@ -9,6 +9,8 @@ class AppDrawer extends StatelessWidget {
     required this.deviceId,
     required this.isRefreshingLines,
     required this.onLoginPressed,
+    required this.onDevicesPressed,
+    required this.onLogoutPressed,
     required this.onNoticesPressed,
     required this.onPurchasePressed,
     required this.onRefreshLines,
@@ -21,6 +23,8 @@ class AppDrawer extends StatelessWidget {
   final String deviceId;
   final bool isRefreshingLines;
   final VoidCallback onLoginPressed;
+  final VoidCallback onDevicesPressed;
+  final VoidCallback onLogoutPressed;
   final VoidCallback onNoticesPressed;
   final VoidCallback onPurchasePressed;
   final VoidCallback onRefreshLines;
@@ -154,6 +158,31 @@ class AppDrawer extends StatelessWidget {
                     trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
                     onTap: onLoginPressed,
                   ),
+                  if (username != null && username!.isNotEmpty)
+                    ListTile(
+                      leading: const Icon(Icons.devices_rounded, color: Color(0xFFE11D48), size: 24),
+                      title: const Text(
+                        '已登录设备',
+                        style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        onDevicesPressed();
+                      },
+                    ),
+                  if (username != null && username!.isNotEmpty)
+                    ListTile(
+                      leading: const Icon(Icons.logout_rounded, color: Color(0xFFE11D48), size: 24),
+                      title: const Text(
+                        '退出当前设备',
+                        style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        onLogoutPressed();
+                      },
+                    ),
                   ListTile(
                     leading: const Icon(Icons.notifications_rounded, color: Color(0xFFE11D48), size: 24),
                     title: const Text(

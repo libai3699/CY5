@@ -89,8 +89,12 @@ onMounted(load);
         <el-table-column label="免费时长" width="150">
           <template #default="{ row }">{{ fmtSec(row.free_used_seconds) }} / {{ fmtSec(row.free_limit_seconds) }}</template>
         </el-table-column>
-        <el-table-column prop="current_line_id" label="线路ID" width="90" />
-        <el-table-column prop="plan_expired_at" label="套餐到期" width="170" />
+        <el-table-column label="线路ID" width="90">
+          <template #default="{ row }">{{ row.current_line_id ?? '未分配' }}</template>
+        </el-table-column>
+        <el-table-column label="套餐到期" width="170">
+          <template #default="{ row }">{{ row.plan_expired_at || '未开通' }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'">{{ row.status === 1 ? '正常' : '禁用' }}</el-tag>

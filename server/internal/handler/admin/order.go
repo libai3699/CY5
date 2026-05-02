@@ -41,9 +41,30 @@ func ListOrders(c *gin.Context) {
 }
 
 type manualOrderReq struct {
-	UserID uint64 `json:"user_id" binding:"required"`
-	PlanID uint   `json:"plan_id" binding:"required"`
-	Remark string `json:"remark"`
+	BillingCycle string `json:"billing_cycle"`
+	UserID       uint64 `json:"user_id" binding:"required"`
+	PlanID       uint   `json:"plan_id" binding:"required"`
+	Remark       string `json:"remark"`
+}
+
+func billingCycleConfig(cycle string, plan model.Plan) (int, float64) {
+	switch cycle {
+	case "quarter":
+		return 3, valueOrOne(plan.DiscountQuarter)
+	case "half_year":
+		return 6, valueOrOne(plan.DiscountHalfYear)
+	case "year":
+		return 12, valueOrOne(plan.DiscountYear)
+	default:
+		return 1, 1
+	}
+}
+
+func valueOrOne(value *float64) float64 {
+	if value == nil || *value <= 0 {
+		return 1
+	}
+	return *value
 }
 
 // CreateOrder 手动开通套餐
@@ -67,12 +88,18 @@ func CreateOrder(c *gin.Context) {
 	}
 
 	now := time.Now()
-	expiredAt := now.AddDate(0, 0, plan.DurationDays)
+	months, discount := billingCycleConfig(req.BillingCycle, plan)
+	durationDays := plan.DurationDays * months
+	planPrice := plan.Price * float64(months) * discount
+	expiredAt := now.AddDate(0, 0, durationDays)
 
 	// 计算流量上限（字节）
 	var trafficLimit *int64
+	var trafficGB *int
 	if plan.TrafficGB != nil {
-		bytes := int64(*plan.TrafficGB) * 1024 * 1024 * 1024
+		gb := *plan.TrafficGB * months
+		trafficGB = &gb
+		bytes := int64(gb) * 1024 * 1024 * 1024
 		trafficLimit = &bytes
 	}
 
@@ -81,9 +108,9 @@ func CreateOrder(c *gin.Context) {
 		UserID:       req.UserID,
 		PlanID:       req.PlanID,
 		PlanName:     plan.Name,
-		PlanPrice:    plan.Price,
-		TrafficGB:    plan.TrafficGB,
-		DurationDays: plan.DurationDays,
+		PlanPrice:    planPrice,
+		TrafficGB:    trafficGB,
+		DurationDays: durationDays,
 		StartedAt:    now,
 		ExpiredAt:    expiredAt,
 		PayMethod:    "manual",

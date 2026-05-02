@@ -25,5 +25,5 @@ export interface OrderListResult {
 export const getOrderList = (params: { page?: number; size?: number }) =>
   requestClient.get<OrderListResult>('/orders', { params });
 
-export const createOrder = (data: { user_id: number; plan_id: number; remark?: string }) =>
+export const createOrder = (data: { billing_cycle?: 'half_year' | 'month' | 'quarter' | 'year'; user_id: number; plan_id: number; remark?: string }) =>
   requestClient.post<Order>('/orders', data);

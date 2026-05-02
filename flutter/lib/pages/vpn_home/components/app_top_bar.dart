@@ -25,7 +25,7 @@ class AppTopBar extends StatelessWidget {
           const SizedBox(width: 2),
           const Expanded(
             child: Text(
-              '9点9',
+              '9点9 VPN',
               style: TextStyle(
                 color: Color(0xFF881337),
                 fontSize: 20,

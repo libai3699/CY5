@@ -36,6 +36,20 @@ class _AuthPageState extends State<AuthPage> {
       return;
     }
 
+    if (register) {
+      final validUsername = username.length >= 6 &&
+          RegExp(r'[A-Za-z]').hasMatch(username) &&
+          RegExp(r'\d').hasMatch(username);
+      if (!validUsername) {
+        setState(() => _message = '账号至少6位，且必须同时包含字母和数字');
+        return;
+      }
+      if (password.length < 6) {
+        setState(() => _message = '密码至少6位');
+        return;
+      }
+    }
+
     setState(() {
       _loading = true;
       _message = null;

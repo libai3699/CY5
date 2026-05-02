@@ -26,11 +26,15 @@ class _ContactPageState extends State<ContactPage> {
 
   Future<void> _load() async {
     final client = HttpClient();
+    client.connectionTimeout = const Duration(seconds: 8);
     try {
       final request = await client.getUrl(Uri.parse(kContactApiUrl));
       final response = await request.close();
       final body = await response.transform(utf8.decoder).join();
-      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
 
       final decoded = jsonDecode(body);
       final list = decoded?['data'];
@@ -42,6 +46,8 @@ class _ContactPageState extends State<ContactPage> {
               .toList();
           _loading = false;
         });
+      } else if (mounted) {
+        setState(() => _loading = false);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
