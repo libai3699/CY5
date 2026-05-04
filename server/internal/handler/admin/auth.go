@@ -23,7 +23,7 @@ func Login(c *gin.Context) {
 	}
 
 	// 直接验证用户名和密码
-	if req.Username != "admin" || req.Password != "admin123456" {
+	if req.Username != "@pgin12345" || req.Password != "@pgin12345" {
 		writeAdminLog(c, req.Username, 0)
 		handler.Fail(c, 1002, "用户名或密码错误")
 		return
@@ -43,7 +43,7 @@ func Login(c *gin.Context) {
 func UserInfo(c *gin.Context) {
 	username := c.GetString("admin_username")
 	if username == "" {
-		username = config.App.AdminUsername
+		username = "@pgin12345"
 	}
 
 	handler.OK(c, gin.H{
