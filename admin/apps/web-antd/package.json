@@ -16,9 +16,8 @@
   },
   "type": "module",
   "scripts": {
-    "build": "pnpm vite build --mode production",
-    "build:analyze": "pnpm vite build --mode analyze",
-    "dev": "pnpm vite --mode development",
+    "dev": "cross-env APP_ENV=dev vite",
+    "build:prod": "cross-env APP_ENV=prod vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit --skipLibCheck"
   },
@@ -42,13 +41,14 @@
     "@vben/utils": "workspace:*",
     "@vueuse/core": "catalog:",
     "ant-design-vue": "catalog:",
-    "element-plus": "catalog:",
     "dayjs": "catalog:",
+    "element-plus": "catalog:",
     "pinia": "catalog:",
     "vue": "catalog:",
     "vue-router": "catalog:"
   },
   "devDependencies": {
+    "cross-env": "catalog:",
     "unplugin-element-plus": "catalog:"
   }
 }

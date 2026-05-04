@@ -26,9 +26,9 @@
   "type": "module",
   "scripts": {
     "bootstrap": "pnpm install",
-    "build": "pnpm run build:antd",
+    "build": "pnpm run build:prod",
     "build:analyze": "pnpm -F @vben/web-antd run build:analyze",
-    "build:antd": "pnpm run build --filter=@vben/web-antd",
+    "build:prod": "pnpm run build --filter=@vben/web-antd",
     "changeset": "pnpm exec changeset",
     "check": "pnpm run check:circular && pnpm run check:dep && pnpm run check:type && pnpm check:cspell",
     "check:circular": "vsh check-circular",
