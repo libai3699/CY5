@@ -23,16 +23,15 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 从数据库查管理员
-	var admin model.Admin
-	if err := database.DB.Where("username = ? AND status = 1", req.Username).First(&admin).Error; err != nil {
+	// 验证用户名
+	if req.Username != config.App.AdminUsername {
 		writeAdminLog(c, req.Username, 0)
 		handler.Fail(c, 1002, "用户名或密码错误")
 		return
 	}
 
-	// 验证密码
-	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(req.Password)); err != nil {
+	// 验证密码（使用配置中的密码哈希）
+	if err := bcrypt.CompareHashAndPassword([]byte(config.App.AdminPasswordHash), []byte(req.Password)); err != nil {
 		writeAdminLog(c, req.Username, 0)
 		handler.Fail(c, 1002, "用户名或密码错误")
 		return
@@ -57,7 +56,7 @@ func UserInfo(c *gin.Context) {
 
 	handler.OK(c, gin.H{
 		"avatar":   "",
-		"desc":     "CY VPN administrator",
+		"desc":     "9.9 VPN administrator",
 		"homePath": "/cy/dashboard",
 		"realName": username,
 		"roles":    []string{"admin"},
