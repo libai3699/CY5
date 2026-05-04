@@ -4,6 +4,7 @@ server/*.exe
 server/.env
 server/uploads/
 server/logs/
+server/app
 
 # ===== Flutter =====
 flutter/.dart_tool/
