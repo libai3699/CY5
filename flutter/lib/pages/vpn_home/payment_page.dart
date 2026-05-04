@@ -29,11 +29,33 @@ class _PaymentPageState extends State<PaymentPage> {
   bool _loading = true;
   String? _error;
   int? _selectedId;
+  double _usdtRate = 6.9; // 默认汇率，加载后替换
 
   @override
   void initState() {
     super.initState();
     _loadPaymentMethods();
+    _loadUsdtRate();
+  }
+
+  Future<void> _loadUsdtRate() async {
+    final client = HttpClient();
+    try {
+      final req = await client.getUrl(
+        Uri.parse('https://api.exchangerate-api.com/v4/latest/USD'),
+      );
+      final resp = await req.close();
+      final body = await resp.transform(utf8.decoder).join();
+      final decoded = jsonDecode(body);
+      final cny = double.tryParse(decoded?['rates']?['CNY']?.toString() ?? '');
+      if (cny != null && cny > 0 && mounted) {
+        setState(() => _usdtRate = cny);
+      }
+    } catch (_) {
+      // 静默失败，用默认 7.2
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> _loadPaymentMethods() async {
@@ -252,7 +274,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 '订单信息',
                 style: TextStyle(
                   color: Color(0xFF881337),
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -267,17 +289,45 @@ class _PaymentPageState extends State<PaymentPage> {
                     '应付金额',
                     style: TextStyle(
                       color: Color(0xFF881337),
-                      fontSize: 14,
+                      fontSize: 15,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  Text(
-                    '¥${widget.totalPrice.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      color: Color(0xFFE11D48),
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                    ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '¥${widget.totalPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Color(0xFFE11D48),
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '≈ ${(widget.totalPrice / _usdtRate).toStringAsFixed(2)} USDT',
+                            style: TextStyle(
+                              color: const Color(0xFF9F1239).withOpacity(0.7),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '实时汇率 1 USDT = ¥${_usdtRate.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: const Color(0xFF9F1239).withOpacity(0.45),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -287,9 +337,49 @@ class _PaymentPageState extends State<PaymentPage> {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-            itemCount: _methods.length,
+            itemCount: _methods.length + 1,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
+              // 最后一项是提示区块
+              if (index == _methods.length) {
+                return Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE11D48).withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFE11D48).withOpacity(0.15),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.tips_and_updates_rounded,
+                              size: 15,
+                              color: const Color(0xFFE11D48).withOpacity(0.8)),
+                          const SizedBox(width: 6),
+                          const Text(
+                            '温馨提示',
+                            style: TextStyle(
+                              color: Color(0xFF881337),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _buildTip('🎁', '充值 10U 送 1U，活动长期有效'),
+                      _buildTip('⚡', '推荐使用 BEP20 链转账，手续费最低'),
+                      _buildTip('🔒', '转账前请核对地址，区块链转账不可撤销'),
+                      _buildTip('📋', '完成支付后截图发给客服，人工审核后秒开通'),
+                      _buildTip('💬', '如有疑问请联系客服，7×24 小时在线'),
+                    ],
+                  ),
+                );
+              }
               final method = _methods[index];
               final isSelected = method.id == _selectedId;
               return GestureDetector(
@@ -358,7 +448,7 @@ class _PaymentPageState extends State<PaymentPage> {
                                 method.address,
                                 style: const TextStyle(
                                   color: Color(0xFF9F1239),
-                                  fontSize: 12,
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
@@ -385,13 +475,13 @@ class _PaymentPageState extends State<PaymentPage> {
                           ),
                         ),
                       ],
-                      if (method.remark.isNotEmpty) ...[
+                      if (method.remark.isNotEmpty && method.address.isEmpty) ...[
                         const SizedBox(height: 8),
                         Text(
                           method.remark,
                           style: TextStyle(
                             color: const Color(0xFF9F1239).withOpacity(0.7),
-                            fontSize: 11,
+                            fontSize: 13,
                           ),
                         ),
                       ],
@@ -435,6 +525,29 @@ class _PaymentPageState extends State<PaymentPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTip(String emoji, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(emoji, style: const TextStyle(fontSize: 13)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: const Color(0xFF9F1239).withOpacity(0.85),
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

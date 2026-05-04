@@ -588,9 +588,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
                       style: FilledButton.styleFrom(
                         textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
                       ),
                       onPressed: _openPurchasePage,
                       icon: const Icon(Icons.shopping_bag_rounded, size: 22),
