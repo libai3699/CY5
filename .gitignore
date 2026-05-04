@@ -2,8 +2,8 @@
 server/bin/
 server/*.exe
 server/.env
-server/go.sum
 server/uploads/
+server/logs/
 
 # ===== Flutter =====
 flutter/.dart_tool/
@@ -18,6 +18,16 @@ flutter/android/app/debug/
 flutter/android/app/profile/
 flutter/android/app/release/
 flutter/windows/flutter/ephemeral/
+flutter/.tmp/
+flutter/.idea/
+flutter/.vscode/
+flutter/*.iml
+flutter/cy_vpn.iml
+flutter/.metadata
+
+# Flutter 废弃的 native 库（已移除，不再使用）
+flutter/android/app/src/main/jniLibs/
+flutter/android/v2ray/
 
 # ===== Admin (Vue) =====
 admin/node_modules/
@@ -26,6 +36,38 @@ admin/.env.local
 admin/.env.*.local
 admin/apps/*/node_modules/
 admin/apps/*/dist/
+admin/packages/*/node_modules/
+admin/packages/*/*/node_modules/
+admin/internal/*/node_modules/
+admin/internal/*/*/node_modules/
+admin/playground/node_modules/
+admin/playground/dist/
+admin/docs/node_modules/
+admin/scripts/*/node_modules/
+admin/.turbo/
+admin/.cache/
+admin/**/.vitepress/cache/
+admin/**/.stylelintcache
+admin/**/.eslintcache
+admin/**/dev-dist/
+admin/**/coverage/
+admin/**/*.local
+admin/**/logs/
+admin/**/*.log
+admin/**/dist-ssr/
+admin/**/dist.zip
+admin/**/dist.tar
+admin/**/dist.war
+admin/**/*-dist.zip
+admin/**/*-dist.tar
+admin/**/*-dist.war
+admin/**/.nitro/
+admin/**/.output/
+admin/**/.temp/
+admin/**/vite.config.mts.*
+admin/**/vite.config.mjs.*
+admin/**/vite.config.js.*
+admin/**/vite.config.ts.*
 
 # ===== OS =====
 .DS_Store
@@ -36,3 +78,28 @@ desktop.ini
 .idea/
 .vscode/
 *.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.history
+.cursor
+
+# ===== Logs =====
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ===== Build outputs =====
+*.apk
+*.aab
+*.exe
+*.dmg
+
+# ===== Temp =====
+*.tmp
+*.temp
