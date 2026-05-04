@@ -25,4 +25,4 @@ plugins {
 }
 
 include ":app"
-include ":v2ray"
+// include ":v2ray"

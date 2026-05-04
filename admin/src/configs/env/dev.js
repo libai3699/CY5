@@ -12,4 +12,5 @@ const config = {
   STORE_SECURE_KEY: 'please-replace-me-with-your-own-key'
 };
 
-module.exports = config;
+export default config;
+

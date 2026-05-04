@@ -21,6 +21,8 @@ func Migrate() {
 		&model.UserLoginLog{},
 		&model.AdminLoginLog{},
 		&model.UserNoticeRead{},
+		&model.Quote{},
+		&model.PaymentConfig{},
 	)
 	if err != nil {
 		log.Fatalf("[migrate] 建表失败: %v", err)
@@ -31,6 +33,8 @@ func Migrate() {
 	seedPlans()
 	seedLines()
 	seedConfigs()
+	seedQuotes()
+	seedPaymentConfigs()
 }
 
 // seedAdmin 初始化管理员账号（幂等）
@@ -121,4 +125,39 @@ func seedConfigs() {
 		DB.Where(model.AppConfig{KeyName: cfg.KeyName}).FirstOrCreate(&cfg)
 	}
 	log.Println("[migrate] 配置初始数据写入完成")
+}
+
+// seedQuotes 初始化精选语录数据（幂等）
+func seedQuotes() {
+	var count int64
+	DB.Model(&model.Quote{}).Count(&count)
+	if count > 0 {
+		return
+	}
+
+	quotes := []model.Quote{
+		{Content: "生活不止眼前的苟且，还有诗和远方的田野。", Author: "高晓松", IsActive: 1, SortOrder: 1},
+		{Content: "世界那么大，我想去看看。", Author: "", IsActive: 1, SortOrder: 2},
+		{Content: "自由不是想做什么就做什么，而是不想做什么就不做什么。", Author: "康德", IsActive: 1, SortOrder: 3},
+		{Content: "互联网让世界变成了地球村。", Author: "", IsActive: 1, SortOrder: 4},
+		{Content: "科技改变生活，网络连接世界。", Author: "", IsActive: 1, SortOrder: 5},
+	}
+	DB.Create(&quotes)
+	log.Println("[migrate] 精选语录初始数据写入完成")
+}
+
+// seedPaymentConfigs 初始化支付配置数据（幂等）
+func seedPaymentConfigs() {
+	configs := []model.PaymentConfig{
+		{Type: "usdt_trc20", Label: "USDT (TRC20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 1, Remark: "请填写TRC20网络的USDT收款地址"},
+		{Type: "usdt_bep20", Label: "USDT (BEP20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 2, Remark: "请填写BEP20网络的USDT收款地址"},
+		{Type: "wechat", Label: "微信支付", Address: "", QRCode: "", IsActive: 1, SortOrder: 3, Remark: "请上传微信收款二维码"},
+		{Type: "alipay", Label: "支付宝", Address: "", QRCode: "", IsActive: 1, SortOrder: 4, Remark: "请上传支付宝收款二维码"},
+	}
+
+	for _, cfg := range configs {
+		// 只在 type 不存在时插入，已存在则跳过
+		DB.Where(model.PaymentConfig{Type: cfg.Type}).FirstOrCreate(&cfg)
+	}
+	log.Println("[migrate] 支付配置初始数据写入完成")
 }

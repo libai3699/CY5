@@ -11,6 +11,7 @@ import 'components/app_drawer.dart';
 import 'components/app_top_bar.dart';
 import 'components/node_picker_sheet.dart';
 import 'components/notice_bar.dart';
+import 'components/quote_card.dart';
 import 'components/vpn_control_panel.dart';
 import 'contact_page.dart';
 import 'data/auth_service.dart';
@@ -564,6 +565,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
                 onSupportPressed: _openSupportH5,
               ),
               NoticeBar(token: _session?.token),
+              const QuoteCard(),
               Expanded(
                 child: VpnControlPanel(
                   status: _status,

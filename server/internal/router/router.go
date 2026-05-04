@@ -22,6 +22,8 @@ func Setup(r *gin.Engine) {
 		publicGroup.GET("/lines/default", app.GetDefaultLine)
 		publicGroup.GET("/notices", app.GetNotices)
 		publicGroup.GET("/plans", app.GetPlans)
+		publicGroup.GET("/quote", app.GetRandomQuote)
+		publicGroup.GET("/payment-configs", app.GetPaymentConfigs)
 		publicGroup.GET("/contact", app.GetContactConfig)
 		publicGroup.GET("/user/notices", middleware.AuthRequired(), app.GetUserNotices)
 		publicGroup.GET("/user/status", middleware.AuthRequired(), app.GetUserStatus)
@@ -45,6 +47,8 @@ func Setup(r *gin.Engine) {
 		appGroup.GET("/config", app.GetConfig)
 		appGroup.GET("/notices", app.GetNotices)
 		appGroup.GET("/plans", app.GetPlans)
+		appGroup.GET("/quote", app.GetRandomQuote)
+		appGroup.GET("/payment-configs", app.GetPaymentConfigs)
 
 		// 需要签名（设备接口）
 		deviceGroup := appGroup.Group("/device")
@@ -88,6 +92,7 @@ func Setup(r *gin.Engine) {
 			authGroup.GET("/users/:id", admin.GetUser)
 			authGroup.PUT("/users/:id", admin.UpdateUser)
 			authGroup.DELETE("/users/:id", admin.DeleteUser)
+			authGroup.POST("/users/:id/add-duration", admin.AddUserDuration)
 
 			// 设备管理
 			authGroup.GET("/devices", admin.ListDevices)
@@ -129,6 +134,18 @@ func Setup(r *gin.Engine) {
 			// 日志
 			authGroup.GET("/logs/user", admin.ListUserLogs)
 			authGroup.GET("/logs/admin", admin.ListAdminLogs)
+
+			// 精选语录管理
+			authGroup.GET("/quotes", admin.ListQuotes)
+			authGroup.POST("/quotes", admin.CreateQuote)
+			authGroup.PUT("/quotes/:id", admin.UpdateQuote)
+			authGroup.DELETE("/quotes/:id", admin.DeleteQuote)
+
+			// 支付配置管理
+			authGroup.GET("/payment-configs", admin.ListPaymentConfigs)
+			authGroup.POST("/payment-configs", admin.CreatePaymentConfig)
+			authGroup.PUT("/payment-configs/:id", admin.UpdatePaymentConfig)
+			authGroup.DELETE("/payment-configs/:id", admin.DeletePaymentConfig)
 		}
 	}
 }

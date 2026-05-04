@@ -1,11 +1,10 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import vueJsx from '@vitejs/plugin-vue-jsx';
 import Components from 'unplugin-vue-components/vite';
 import { AntDesignVueResolver } from 'unplugin-vue-components/resolvers';
 import { resolve } from 'path';
-
-const config = require('./src/configs');
+import config from './src/configs/index.js';
 
 export default defineConfig({
   plugins: [
@@ -24,6 +23,23 @@ export default defineConfig({
     alias: {
       '#': resolve(__dirname, 'src'),
       '@': resolve(__dirname, 'src'),
+      '@vben/preferences': resolve(__dirname, 'src/vben-shims/preferences.ts'),
+      '@vben/utils': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/access': resolve(__dirname, 'src/vben-shims/access.ts'),
+      '@vben/stores': resolve(__dirname, 'src/vben-shims/stores.ts'),
+      '@vben/hooks': resolve(__dirname, 'src/vben-shims/hooks.ts'),
+      '@vben/request': resolve(__dirname, 'src/vben-shims/request.ts'),
+      '@vben/locales': resolve(__dirname, 'src/vben-shims/locales.ts'),
+      '@vben/icons': resolve(__dirname, 'src/vben-shims/icons.ts'),
+      '@vben/constants': resolve(__dirname, 'src/vben-shims/constants.ts'),
+      '@vben/types': resolve(__dirname, 'src/vben-shims/types.ts'),
+      '@vben/common-ui': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/common-ui/es/loading': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/common-ui/es/tippy': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/plugins/motion': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/plugins/vxe-table': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/layouts': resolve(__dirname, 'src/vben-shims/utils.ts'),
+      '@vben/styles': resolve(__dirname, 'src/vben-shims/utils.ts'),
     },
   },
 
@@ -45,9 +61,8 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: config.API_BASE_URL,
+        target: 'http://127.0.0.1:8989',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
         ws: true,
       },
     },

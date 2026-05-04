@@ -2,6 +2,7 @@ package admin
 
 import (
 	"strconv"
+	"time"
 
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
@@ -184,4 +185,43 @@ func safeUserAdmin(u model.User) gin.H {
 		"last_login_at":       u.LastLoginAt,
 		"created_at":          u.CreatedAt,
 	}
+}
+
+type addDurationReq struct {
+	Days int `json:"days" binding:"required,min=1"` // 追加的天数
+}
+
+// AddUserDuration 给用户追加时长
+func AddUserDuration(c *gin.Context) {
+	id := c.Param("id")
+	var user model.User
+	if err := database.DB.First(&user, id).Error; err != nil {
+		handler.Fail(c, 404, "用户不存在")
+		return
+	}
+
+	var req addDurationReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		handler.Fail(c, 400, "参数错误")
+		return
+	}
+
+	// 计算新的过期时间
+	now := time.Now()
+	var newExpiredAt time.Time
+	
+	if user.PlanExpiredAt == nil || user.PlanExpiredAt.Before(now) {
+		// 如果没有套餐或已过期，从当前时间开始计算
+		newExpiredAt = now.AddDate(0, 0, req.Days)
+	} else {
+		// 如果还有剩余时长，在原有基础上追加
+		newExpiredAt = user.PlanExpiredAt.AddDate(0, 0, req.Days)
+	}
+
+	database.DB.Model(&user).Update("plan_expired_at", newExpiredAt)
+	
+	handler.OK(c, gin.H{
+		"msg":             "追加成功",
+		"plan_expired_at": newExpiredAt,
+	})
 }

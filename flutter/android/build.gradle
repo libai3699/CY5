@@ -2,9 +2,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        flatDir {
-            dirs project(':v2ray').file('libs')
-        }
+        // flatDir {
+        //     dirs project(':v2ray').file('libs')
+        // }
     }
 }
 

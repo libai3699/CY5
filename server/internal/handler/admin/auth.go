@@ -57,7 +57,7 @@ func UserInfo(c *gin.Context) {
 	handler.OK(c, gin.H{
 		"avatar":   "",
 		"desc":     "9.9 VPN administrator",
-		"homePath": "/cy/dashboard",
+		"homePath": "/workspace",
 		"realName": username,
 		"roles":    []string{"admin"},
 		"token":    "",

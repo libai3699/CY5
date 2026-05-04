@@ -1,113 +1,71 @@
-/**
- * 该文件可自行根据业务逻辑进行调整
- */
-import type { RequestClientOptions } from '@vben/request';
+import axios, { type AxiosInstance } from 'axios';
+import { useUserStore } from '../vben-shims/stores';
 
-import { useAppConfig } from '@vben/hooks';
-import { preferences } from '@vben/preferences';
-import {
-  authenticateResponseInterceptor,
-  defaultResponseInterceptor,
-  errorMessageResponseInterceptor,
-  RequestClient,
-} from '@vben/request';
-import { useAccessStore } from '@vben/stores';
+// 开发环境使用相对路径（走vite代理），生产环境使用配置的完整URL
+const apiURL = import.meta.env.DEV 
+  ? '/api/admin' 
+  : import.meta.env.VITE_GLOB_API_URL;
 
-import { message } from 'ant-design-vue';
+console.log('API URL:', apiURL, 'ENV:', import.meta.env.MODE);
 
-import { useAuthStore } from '#/store';
+class RequestClient {
+  private instance: AxiosInstance;
 
-import { refreshTokenApi } from './core';
+  constructor(baseURL: string) {
+    this.instance = axios.create({
+      baseURL,
+      timeout: 10000,
+    });
 
-const { apiURL } = useAppConfig(import.meta.env, import.meta.env.PROD);
+    // 请求拦截器
+    this.instance.interceptors.request.use(
+      (config) => {
+        const userStore = useUserStore();
+        if (userStore.token) {
+          config.headers.Authorization = `Bearer ${userStore.token}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
 
-function createRequestClient(baseURL: string, options?: RequestClientOptions) {
-  const client = new RequestClient({
-    ...options,
-    baseURL,
-  });
-
-  /**
-   * 重新认证逻辑
-   */
-  async function doReAuthenticate() {
-    console.warn('Access token or refresh token is invalid or expired. ');
-    const accessStore = useAccessStore();
-    const authStore = useAuthStore();
-    accessStore.setAccessToken(null);
-    if (
-      preferences.app.loginExpiredMode === 'modal' &&
-      accessStore.isAccessChecked
-    ) {
-      accessStore.setLoginExpired(true);
-    } else {
-      await authStore.logout();
-    }
+    // 响应拦截器
+    this.instance.interceptors.response.use(
+      (response) => {
+        const { data } = response;
+        // 后端返回格式：{ code: 0, data: {...} }
+        if (data.code === 0) {
+          return data.data;
+        }
+        // 如果code不是0，抛出错误
+        const errorMsg = data.msg || data.message || '请求失败';
+        console.error('API Error:', errorMsg);
+        return Promise.reject(new Error(errorMsg));
+      },
+      (error) => {
+        console.error('Request error:', error);
+        const errorMsg = error.response?.data?.msg || error.response?.data?.message || error.message || '网络错误';
+        return Promise.reject(new Error(errorMsg));
+      }
+    );
   }
 
-  /**
-   * 刷新token逻辑
-   */
-  async function doRefreshToken() {
-    const accessStore = useAccessStore();
-    const resp = await refreshTokenApi();
-    const newToken = resp.data;
-    accessStore.setAccessToken(newToken);
-    return newToken;
+  async get<T = any>(url: string, config?: any): Promise<T> {
+    return this.instance.get(url, config);
   }
 
-  function formatToken(token: null | string) {
-    return token ? `Bearer ${token}` : null;
+  async post<T = any>(url: string, data?: any, config?: any): Promise<T> {
+    return this.instance.post(url, data, config);
   }
 
-  // 请求头处理
-  client.addRequestInterceptor({
-    fulfilled: async (config) => {
-      const accessStore = useAccessStore();
+  async put<T = any>(url: string, data?: any, config?: any): Promise<T> {
+    return this.instance.put(url, data, config);
+  }
 
-      config.headers.Authorization = formatToken(accessStore.accessToken);
-      config.headers['Accept-Language'] = preferences.app.locale;
-      return config;
-    },
-  });
-
-  // 处理返回的响应数据格式
-  client.addResponseInterceptor(
-    defaultResponseInterceptor({
-      codeField: 'code',
-      dataField: 'data',
-      successCode: 0,
-    }),
-  );
-
-  // token过期的处理
-  client.addResponseInterceptor(
-    authenticateResponseInterceptor({
-      client,
-      doReAuthenticate,
-      doRefreshToken,
-      enableRefreshToken: false, // 后端无 refresh 接口
-      formatToken,
-    }),
-  );
-
-  // 通用的错误处理,如果没有进入上面的错误处理逻辑，就会进入这里
-  client.addResponseInterceptor(
-    errorMessageResponseInterceptor((msg: string, error) => {
-      // 这里可以根据业务进行定制,你可以拿到 error 内的信息进行定制化处理，根据不同的 code 做不同的提示，而不是直接使用 message.error 提示 msg
-      // 当前mock接口返回的错误字段是 error 或者 message
-      const responseData = error?.response?.data ?? {};
-      const errorMessage = responseData?.error ?? responseData?.message ?? '';
-      // 如果没有错误信息，则会根据状态码进行提示
-      message.error(errorMessage || msg);
-    }),
-  );
-
-  return client;
+  async delete<T = any>(url: string, config?: any): Promise<T> {
+    return this.instance.delete(url, config);
+  }
 }
 
-export const requestClient = createRequestClient(apiURL, {
-  responseReturn: 'data',
-});
-
-export const baseRequestClient = new RequestClient({ baseURL: apiURL });
+export const requestClient = new RequestClient(apiURL);
+export const baseRequestClient = requestClient;

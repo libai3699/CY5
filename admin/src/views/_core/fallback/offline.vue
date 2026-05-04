@@ -1,9 +1,9 @@
 <script lang="ts" setup>
-import { Fallback } from '@vben/common-ui';
+import Fallback from '#/components/Fallback.vue';
 
-defineOptions({ name: 'FallbackOfflineDemo' });
+defineOptions({ name: 'FallbackOffline' });
 </script>
 
 <template>
-  <Fallback status="offline" />
+  <Fallback title="离线" description="网络连接已断开，请检查您的网络设置" />
 </template>

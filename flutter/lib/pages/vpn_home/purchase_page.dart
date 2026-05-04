@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'components/common_page_top_bar.dart';
 import 'contact_page.dart';
 import 'data/api_config.dart';
+import 'payment_page.dart';
 
 class PurchasePage extends StatefulWidget {
   const PurchasePage({super.key});
@@ -292,24 +293,17 @@ class _PurchasePageState extends State<PurchasePage> {
   }
 
   void _onBuy() {
-    showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('提示'),
-        content: const Text('支付功能即将上线，请联系客服购买。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _openContact();
-            },
-            child: const Text('联系客服'),
-          ),
-        ],
+    final selected = _selectedPlan;
+    if (selected == null) return;
+
+    final total = selected.totalFor(_cycle);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PaymentPage(
+          planName: selected.name,
+          totalPrice: total,
+          cycle: _cycle.label,
+        ),
       ),
     );
   }

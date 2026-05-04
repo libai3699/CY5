@@ -39,13 +39,27 @@ pnpm preview
 
 修改 `src/configs/env/dev.js` 或 `prod.js` 中的配置：
 
+**开发环境** (`dev.js`):
 ```javascript
 {
   APP_ENV: 'dev',
   APP_TITLE: '9点9 Admin',
   APP_NAMESPACE: 'vben-admin',
   APP_VERSION: '1.0.0',
-  API_BASE_URL: 'http://192.168.70.54:8080/api/admin',
+  API_BASE_URL: 'http://127.0.0.1:8989/api/admin',  // 开发环境使用本地后端
+  PORT: 5666,
+  // ...
+}
+```
+
+**生产环境** (`prod.js`):
+```javascript
+{
+  APP_ENV: 'prod',
+  APP_TITLE: '9点9 Admin',
+  APP_NAMESPACE: 'vben-admin',
+  APP_VERSION: '1.0.0',
+  API_BASE_URL: 'https://vpnapi.wangwei.tech/api/admin',  // 生产环境使用线上后端
   PORT: 5666,
   // ...
 }

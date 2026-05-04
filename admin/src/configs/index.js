@@ -1,8 +1,8 @@
 // 配置项
-const envDev = require('./env/dev.js');
-const envProd = require('./env/prod.js');
+import envDev from './env/dev.js';
+import envProd from './env/prod.js';
 
-const compileEnv = process.env.APP_ENV || 'dev';
+const compileEnv = process.env.APP_ENV || 'prod';
 
 // 环境配置字典
 const config = {
@@ -24,6 +24,7 @@ const configCommon = {
 // 合并公共配置
 CONFIG = Object.assign({}, configCommon, CONFIG);
 
-module.exports = CONFIG;
-module.exports.compileEnv = compileEnv;
-module.exports.APP_ENV = process.env.APP_ENV || 'dev';
+export default CONFIG;
+export { compileEnv, CONFIG };
+export const APP_ENV = process.env.APP_ENV || 'dev';
+

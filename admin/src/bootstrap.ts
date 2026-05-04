@@ -1,92 +1,27 @@
-import { createApp, watchEffect } from 'vue';
-
-import { registerAccessDirective } from '@vben/access';
-import { registerLoadingDirective } from '@vben/common-ui/es/loading';
-import { preferences } from '@vben/preferences';
-import { initStores } from '@vben/stores';
-import '@vben/styles';
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
 
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
-import { useTitle } from '@vueuse/core';
 
-import { $t, setupI18n } from '#/locales';
-
-import { initComponentAdapter } from './adapter/component';
-import { initSetupVbenForm } from './adapter/form';
 import App from './app.vue';
 import { router } from './router';
 
 async function bootstrap(namespace: string) {
-  // 清除旧版本的 preferences 缓存，强制使用新配置
-  const PREF_VERSION = 'v2';
-  const prefVersionKey = `${namespace}_pref_version`;
-  if (localStorage.getItem(prefVersionKey) !== PREF_VERSION) {
-    // 清除所有 preferences 相关缓存
-    Object.keys(localStorage).forEach((key) => {
-      if (key.includes('preferences') || key.includes('vben')) {
-        localStorage.removeItem(key);
-      }
-    });
-    localStorage.setItem(prefVersionKey, PREF_VERSION);
-  }
-
-  // 初始化组件适配器
-  await initComponentAdapter();
-
-  // 初始化表单组件
-  await initSetupVbenForm();
-
-  // // 设置弹窗的默认配置
-  // setDefaultModalProps({
-  //   fullscreenButton: false,
-  // });
-  // // 设置抽屉的默认配置
-  // setDefaultDrawerProps({
-  //   zIndex: 1020,
-  // });
+  console.log('Bootstrap namespace:', namespace);
 
   const app = createApp(App);
+
+  // 注册 Pinia
+  const pinia = createPinia();
+  app.use(pinia);
 
   // 注册 Element Plus
   app.use(ElementPlus, { locale: zhCn });
 
-  // 注册v-loading指令
-  registerLoadingDirective(app, {
-    loading: 'loading', // 在这里可以自定义指令名称，也可以明确提供false表示不注册这个指令
-    spinning: 'spinning',
-  });
-
-  // 国际化 i18n 配置
-  await setupI18n(app);
-
-  // 配置 pinia-tore
-  await initStores(app, { namespace });
-
-  // 安装权限指令
-  registerAccessDirective(app);
-
-  // 初始化 tippy
-  const { initTippy } = await import('@vben/common-ui/es/tippy');
-  initTippy(app);
-
-  // 配置路由及路由守卫
+  // 配置路由
   app.use(router);
-
-  // 配置Motion插件
-  const { MotionPlugin } = await import('@vben/plugins/motion');
-  app.use(MotionPlugin);
-
-  // 动态更新标题
-  watchEffect(() => {
-    if (preferences.app.dynamicTitle) {
-      const routeTitle = router.currentRoute.value.meta?.title;
-      const pageTitle =
-        (routeTitle ? `${$t(routeTitle)} - ` : '') + preferences.app.name;
-      useTitle(pageTitle);
-    }
-  });
 
   app.mount('#app');
 }

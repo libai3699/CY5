@@ -1,7 +1,7 @@
 <script lang="ts" setup>
-import { Fallback } from '@vben/common-ui';
+import Fallback from '#/components/Fallback.vue';
 
-defineOptions({ name: 'Fallback404Demo' });
+defineOptions({ name: 'Fallback404' });
 </script>
 
 <template>
