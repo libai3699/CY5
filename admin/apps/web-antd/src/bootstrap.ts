@@ -8,6 +8,8 @@ import '@vben/styles';
 import '@vben/styles/antd';
 
 import { useTitle } from '@vueuse/core';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
 
 import { $t, setupI18n } from '#/locales';
 
@@ -33,6 +35,9 @@ async function bootstrap(namespace: string) {
   // });
 
   const app = createApp(App);
+
+  // 注册 Element Plus（业务页面使用）
+  app.use(ElementPlus);
 
   // 注册v-loading指令
   registerLoadingDirective(app, {
