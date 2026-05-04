@@ -48,8 +48,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
   AppStatus _appStatus = const AppStatus(
     planLevel: '免费体验',
     remainingSeconds: 0,
-    remainingTimeText: '未知',
-    trafficRemaining: '不限流量',
+    remainingTimeText: '已到期',
+    trafficRemaining: '0 GB',
   );
   Map<String, String> _appConfig = const {};
   VpnStatus _status = VpnStatus.disconnected;
@@ -154,25 +154,28 @@ class _VpnHomePageState extends State<VpnHomePage> {
       final status = token == null || token.isEmpty
           ? await _appLoader.loadStatus()
           : await _appLoader.loadUserStatus(token);
-      final config = await _appLoader.loadConfig();
+      print('[LOAD_APP_DATA] status ok: ${status.remainingTimeText} / ${status.trafficRemaining}');
       if (!mounted) return;
-      setState(() {
-        _appStatus = status;
-        _appConfig = config;
-      });
+      setState(() { _appStatus = status; });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
     } catch (error) {
+      print('[LOAD_APP_DATA] error: $error');
       if (!mounted) return;
-      setState(() {
-        _message = 'App 配置加载失败：$error';
-      });
+      setState(() { _message = 'App 配置加载失败：$error'; });
+    }
+    try {
+      final config = await _appLoader.loadConfig();
+      if (!mounted) return;
+      setState(() { _appConfig = config; });
+    } catch (e) {
+      print('[LOAD_CONFIG] error: $e');
     }
   }
 
   void _syncRemainingTimer(int seconds) {
     _remainingTimer?.cancel();
-    if (seconds < 0) return;
+    if (seconds <= 0) return; // 0 或负数不启动倒计时
     _remainingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final next = _appStatus.remainingSeconds - 1;
@@ -231,19 +234,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   void _applySessionStatus(AuthSession session) {
-    _syncRemainingTimer(session.freeRemaining);
-    setState(() {
-      _appStatus = AppStatus(
-        planLevel: _appStatus.planLevel,
-        remainingSeconds: session.freeRemaining,
-        remainingTimeText: _formatRemainingTime(session.freeRemaining),
-        trafficRemaining: '不限流量',
-      );
-    });
+    // 不用本地 session 的旧数据覆盖状态，等 _loadAppData 从服务器拉取最新数据
+    _syncRemainingTimer(0);
   }
 
   String _formatRemainingTime(int seconds) {
-    if (seconds < 0) return '不限时长';
+    if (seconds < 0) return '不限时长'; // 套餐用户后端返回 -1
     if (seconds <= 0) return '已到期';
     final minutes = (seconds / 60).ceil();
     if (minutes < 60) return '$minutes分钟';
@@ -465,7 +461,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         planLevel: '免费体验',
         remainingSeconds: 0,
         remainingTimeText: '未登录',
-        trafficRemaining: '不限流量',
+        trafficRemaining: '0 GB',
       );
       _message = '已退出当前设备';
     });
@@ -522,6 +518,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    print('[BUILD] remainingTimeText=${_appStatus.remainingTimeText} traffic=${_appStatus.trafficRemaining}');
     return Scaffold(
       key: _scaffoldKey,
       drawer: AppDrawer(

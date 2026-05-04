@@ -1,6 +1,6 @@
-/// 统一 API 基础地址配置
-/// 修改此处即可更新所有接口地址
-const String kApiBaseUrl = 'https://vpnapi.wangwei.tech';
+//const String kApiBaseUrl = 'https://vpnapi.wangwei.tech';
+//测试服
+const String kApiBaseUrl = 'http://192.168.70.54:8989';
 
 // ── 公开接口（无需登录/签名）──────────────────────────────────
 const String kDeviceRegisterUrl = '$kApiBaseUrl/api/public/device/register';

@@ -54,7 +54,11 @@ func GetUserStatus(c *gin.Context) {
 	remainingSeconds := remaining
 	if hasPlan {
 		planLevel = "付费套餐"
-		remainingSeconds = int(time.Until(*user.PlanExpiredAt).Seconds())
+		secs := int(time.Until(*user.PlanExpiredAt).Seconds())
+		if secs < 0 {
+			secs = 0
+		}
+		remainingSeconds = secs
 	}
 
 	trafficRemaining := "不限流量"

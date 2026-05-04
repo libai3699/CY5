@@ -9,6 +9,7 @@ class RemoteAppLoader {
 
   Future<AppStatus> loadStatus() async {
     final data = await _getJson(kAppStatusApiUrl);
+    print('[STATUS_PUBLIC] raw: $data');
     final body = data['data'];
     if (body is Map<String, dynamic>) return AppStatus.fromJson(body);
     throw Exception('状态接口数据格式错误');
@@ -16,18 +17,24 @@ class RemoteAppLoader {
 
   Future<AppStatus> loadUserStatus(String token) async {
     final data = await _getJson(kUserStatusApiUrl, token: token);
+    print('[STATUS_USER] raw: $data');
     final body = data['data'];
     if (body is Map<String, dynamic>) return AppStatus.fromJson(body);
     throw Exception('状态接口数据格式错误');
   }
 
   Future<Map<String, String>> loadConfig() async {
-    final data = await _getJson(kAppConfigApiUrl);
-    final body = data['data'];
-    if (body is Map<String, dynamic>) {
-      return body.map((key, value) => MapEntry(key, value?.toString() ?? ''));
+    try {
+      final data = await _getJson(kAppConfigApiUrl);
+      final body = data['data'];
+      if (body is Map<String, dynamic>) {
+        return body.map((key, value) => MapEntry(key, value?.toString() ?? ''));
+      }
+      return const {};
+    } catch (e) {
+      print('[LOAD_CONFIG] error: $e');
+      return const {};
     }
-    return const {};
   }
 
   Future<Map<String, dynamic>> _getJson(String url, {String? token}) async {

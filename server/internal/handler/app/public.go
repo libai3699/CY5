@@ -23,13 +23,10 @@ func GetPublicConfig(c *gin.Context) {
 }
 
 func GetPublicAppStatus(c *gin.Context) {
-	remainingSeconds := 0
-	planLevel := "免费体验"
-
 	handler.OK(c, gin.H{
-		"plan_level":          planLevel,
-		"remaining_seconds":   remainingSeconds,
-		"traffic_remaining":   "不限流量",
+		"plan_level":          "免费体验",
+		"remaining_seconds":   0,
+		"traffic_remaining":   "0 GB",
 		"server_time":         time.Now().Unix(),
 		"remaining_time_text": "未登录",
 	})

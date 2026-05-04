@@ -15,8 +15,8 @@ class AppStatus {
     return AppStatus(
       planLevel: json['plan_level']?.toString() ?? '免费体验',
       remainingSeconds: int.tryParse(json['remaining_seconds']?.toString() ?? '') ?? 0,
-      remainingTimeText: json['remaining_time_text']?.toString() ?? '未知',
-      trafficRemaining: json['traffic_remaining']?.toString() ?? '不限流量',
+      remainingTimeText: json['remaining_time_text']?.toString() ?? '已到期',
+      trafficRemaining: json['traffic_remaining']?.toString() ?? '0 GB',
     );
   }
 }
