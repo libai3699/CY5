@@ -153,11 +153,18 @@ func updateDeviceUser(deviceID string, userID uint64) {
 }
 
 func canLoginDevice(user model.User, deviceID string) bool {
+	// 1. 该设备已绑定该用户，直接放行
 	var bound model.Device
 	if err := database.DB.Where("device_id = ? AND user_id = ?", deviceID, user.ID).First(&bound).Error; err == nil {
 		return true
 	}
 
+	// 2. 检查用户主设备字段匹配
+	if user.DeviceID == deviceID {
+		return true
+	}
+
+	// 3. 检查设备数量上限
 	maxDevices := 1
 	if user.CurrentPlanID != nil && user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now()) {
 		var plan model.Plan
@@ -168,7 +175,15 @@ func canLoginDevice(user model.User, deviceID string) bool {
 
 	var count int64
 	database.DB.Model(&model.Device{}).Where("user_id = ?", user.ID).Count(&count)
-	return count < int64(maxDevices)
+	// 允许替换：设备数已满时，允许登录（会替换旧设备绑定）
+	if count >= int64(maxDevices) {
+		// 删除该用户最旧的设备绑定，腾出位置
+		var oldest model.Device
+		if err := database.DB.Where("user_id = ?", user.ID).Order("updated_at asc").First(&oldest).Error; err == nil {
+			database.DB.Delete(&oldest)
+		}
+	}
+	return true
 }
 
 func safeUser(u model.User) gin.H {
