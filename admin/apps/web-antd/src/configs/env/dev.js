@@ -3,7 +3,7 @@ const config = {
   APP_TITLE: '9点9 Admin',
   APP_NAMESPACE: 'vben-admin',
   APP_VERSION: '1.0.0',
-  API_BASE_URL: 'http://192.168.70.54:8080/api/admin',
+  API_BASE_URL: 'http://127.0.0.1:8989/api/admin',
   PORT: 5666,
   BASE: '/',
   NITRO_MOCK: false,
