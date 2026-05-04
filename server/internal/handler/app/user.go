@@ -61,13 +61,17 @@ func GetUserStatus(c *gin.Context) {
 		remainingSeconds = secs
 	}
 
-	trafficRemaining := "不限流量"
-	if hasPlan && user.TrafficLimitBytes != nil {
-		left := *user.TrafficLimitBytes - user.TrafficUsedBytes
-		if left < 0 {
-			left = 0
+	trafficRemaining := "0 GB"
+	if hasPlan {
+		if user.TrafficLimitBytes != nil {
+			left := *user.TrafficLimitBytes - user.TrafficUsedBytes
+			if left < 0 {
+				left = 0
+			}
+			trafficRemaining = formatGB(left)
+		} else {
+			trafficRemaining = "不限流量"
 		}
-		trafficRemaining = formatGB(left)
 	}
 
 	handler.OK(c, gin.H{

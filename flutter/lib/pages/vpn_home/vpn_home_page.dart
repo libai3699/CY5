@@ -580,12 +580,20 @@ class _VpnHomePageState extends State<VpnHomePage> {
               ),
               if (_session != null && _appStatus.remainingSeconds <= 0 && !_hasActivePlan)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                   child: SizedBox(
                     width: double.infinity,
+                    height: 60,
                     child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
                       onPressed: _openPurchasePage,
-                      icon: const Icon(Icons.shopping_bag_rounded),
+                      icon: const Icon(Icons.shopping_bag_rounded, size: 22),
                       label: const Text('试用已结束，去购买套餐'),
                     ),
                   ),
