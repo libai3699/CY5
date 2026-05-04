@@ -34,6 +34,12 @@ export async function getAllMenusApi(): Promise<RouteRecordStringComponent[]> {
           component: '../views/users/UserDevicesPage.vue',
           meta: { icon: 'carbon:mobile', title: '设备管理' },
         },
+        {
+          name: 'DurationLogPage',
+          path: '/users/duration-logs',
+          component: '../views/users/DurationLogPage.vue',
+          meta: { icon: 'carbon:time', title: '追加记录' },
+        },
       ],
     },
     {

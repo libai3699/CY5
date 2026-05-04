@@ -25,4 +25,4 @@ const String kMarkAllReadUrl = '$kApiBaseUrl/api/app/user/notices/read-all';
 
 /// App 版本号 — 与 pubspec.yaml 的 version 字段保持一致
 /// 只需在这里改一处，Drawer 底部版本号自动更新
-const String kAppVersion = '0.0.3';
+const String kAppVersion = '0.0.4';

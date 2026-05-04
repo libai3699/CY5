@@ -7,9 +7,10 @@ import 'package:flutter/material.dart';
 import '../data/api_config.dart';
 
 class NoticeBar extends StatefulWidget {
-  const NoticeBar({super.key, this.token});
+  const NoticeBar({super.key, this.token, this.onStatusUpdate});
 
   final String? token;
+  final VoidCallback? onStatusUpdate; // 收到 status_update 事件时回调
 
   @override
   State<NoticeBar> createState() => _NoticeBarState();
@@ -100,19 +101,39 @@ class _NoticeBarState extends State<NoticeBar> {
         path: '/api/public/ws/notices',
         queryParameters: {'token': token},
       );
+      print('[WS] connecting to: $uri');
       final socket = await WebSocket.connect(uri.toString());
+      print('[WS] connected');
       _socket = socket;
       socket.listen(
-        (_) => _load(),
+        (data) {
+          print('[WS] received: $data');
+          // 解析事件类型
+          try {
+            final decoded = jsonDecode(data.toString());
+            final event = decoded?['event']?.toString();
+            print('[WS] event: $event');
+            if (event == 'status_update') {
+              print('[WS] status_update received, refreshing...');
+              widget.onStatusUpdate?.call();
+            }
+          } catch (e) {
+            print('[WS] parse error: $e');
+          }
+          _load();
+        },
         onDone: () {
+          print('[WS] connection closed');
           if (mounted && identical(_socket, socket)) _socket = null;
         },
-        onError: (_) {
+        onError: (e) {
+          print('[WS] error: $e');
           if (mounted && identical(_socket, socket)) _socket = null;
         },
         cancelOnError: true,
       );
-    } catch (_) {
+    } catch (e) {
+      print('[WS] connect failed: $e');
       // 静默处理实时通知连接失败。
     }
   }

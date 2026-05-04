@@ -39,6 +39,9 @@ export const updateUser = (id: number, data: { status?: number; phone?: string; 
 export const deleteUser = (id: number) =>
   requestClient.delete(`/users/${id}`);
 
-export const addUserDuration = (id: number, days: number) =>
-  requestClient.post(`/users/${id}/add-duration`, { days });
+export const addUserDuration = (id: number, seconds: number, trafficBytes = 0) =>
+  requestClient.post(`/users/${id}/add-duration`, { 
+    seconds: Math.round(seconds),
+    traffic_bytes: trafficBytes,
+  });
 

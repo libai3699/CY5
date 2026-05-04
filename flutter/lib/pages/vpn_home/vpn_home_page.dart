@@ -87,6 +87,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Future<void> _initDeviceAndAuth() async {
     try {
       final session = await _authService.loadSession();
+      print('[AUTH] session loaded: ${session?.username}, token empty: ${session?.token.isEmpty}');
       final displayId = await _deviceIdentity.register();
       if (!mounted) return;
       setState(() {
@@ -94,6 +95,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
         _session = session;
       });
       if (session != null) _applySessionStatus(session);
+      // session 加载完后重新拉一次状态，确保用 token 请求
+      await _loadAppData();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -561,21 +564,25 @@ class _VpnHomePageState extends State<VpnHomePage> {
                 onMenuPressed: _openSettingsMenu,
                 onSupportPressed: _openSupportH5,
               ),
-              NoticeBar(token: _session?.token),
+              NoticeBar(token: _session?.token, onStatusUpdate: _loadAppData),
               const QuoteCard(),
               Expanded(
-                child: VpnControlPanel(
-                  status: _status,
-                  node: _selectedNode,
-                  message: _message,
-                  remainingTimeText: _appStatus.remainingTimeText,
-                  trafficRemaining: _appStatus.trafficRemaining,
-                  isLoadingNodes: _isLoadingNodes,
-                  isBusy: _isConnecting,
-                  hasNodes: _nodes.isNotEmpty,
-                  onReloadNodes: _loadNodes,
-                  onPowerPressed: _isConnected ? _disconnect : _connect,
-                  onNodePressed: _openNodePicker,
+                child: RefreshIndicator(
+                  color: const Color(0xFFE11D48),
+                  onRefresh: _loadAppData,
+                  child: VpnControlPanel(
+                    status: _status,
+                    node: _selectedNode,
+                    message: _message,
+                    remainingTimeText: _appStatus.remainingTimeText,
+                    trafficRemaining: _appStatus.trafficRemaining,
+                    isLoadingNodes: _isLoadingNodes,
+                    isBusy: _isConnecting,
+                    hasNodes: _nodes.isNotEmpty,
+                    onReloadNodes: _loadNodes,
+                    onPowerPressed: _isConnected ? _disconnect : _connect,
+                    onNodePressed: _openNodePicker,
+                  ),
                 ),
               ),
               if (_session != null && _appStatus.remainingSeconds <= 0 && !_hasActivePlan)
@@ -586,11 +593,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
                     height: 60,
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFE11D48),
+                        foregroundColor: Colors.white,
                         textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                        shadowColor: const Color(0xFFE11D48).withOpacity(0.4),
+                        elevation: 6,
                       ),
                       onPressed: _openPurchasePage,
-                      icon: const Icon(Icons.shopping_bag_rounded, size: 22),
+                      icon: const Icon(Icons.rocket_launch_rounded, size: 22),
                       label: const Text('试用已结束，去购买套餐'),
                     ),
                   ),

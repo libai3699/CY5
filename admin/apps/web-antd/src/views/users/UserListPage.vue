@@ -16,7 +16,36 @@ const form = reactive({ username: '', password: '', phone: '', status: 1, free_u
 
 const durationDialogVisible = ref(false);
 const durationUserId = ref(0);
-const durationDays = ref(30);
+const durationAmount = ref(1);
+const durationUnit = ref<'minute' | 'hour' | 'day' | 'month' | 'year'>('day');
+const durationTrafficGB = ref(0); // 追加流量 GB，0 表示不追加
+
+const durationUnitOptions = [
+  { label: '分钟', value: 'minute' },
+  { label: '小时', value: 'hour' },
+  { label: '天', value: 'day' },
+  { label: '月', value: 'month' },
+  { label: '年', value: 'year' },
+];
+
+const durationMaxMap: Record<string, number> = {
+  minute: 525600, // 1年的分钟数
+  hour: 8760,
+  day: 365,
+  month: 12,
+  year: 1,
+};
+
+function toSeconds(amount: number, unit: string): number {
+  switch (unit) {
+    case 'minute': return amount * 60;
+    case 'hour': return amount * 3600;
+    case 'day': return amount * 86400;
+    case 'month': return amount * 30 * 86400;
+    case 'year': return amount * 365 * 86400;
+    default: return amount * 86400;
+  }
+}
 
 async function load() {
   loading.value = true;
@@ -72,22 +101,31 @@ async function handleDelete(row: User) {
 
 function openAddDuration(row: User) {
   durationUserId.value = row.id;
-  durationDays.value = 30;
+  durationAmount.value = 1;
+  durationUnit.value = 'day';
+  durationTrafficGB.value = 0;
   durationDialogVisible.value = true;
 }
 
 async function handleAddDuration() {
-  if (durationDays.value < 1) {
-    ElMessage.warning('追加天数必须大于0');
+  if (durationAmount.value < 1) {
+    ElMessage.warning('追加数量必须大于0');
     return;
   }
-  await addUserDuration(durationUserId.value, durationDays.value);
+  const seconds = toSeconds(durationAmount.value, durationUnit.value);
+  const trafficBytes = durationTrafficGB.value > 0 ? durationTrafficGB.value * 1024 * 1024 * 1024 : 0;
+  await addUserDuration(durationUserId.value, seconds, trafficBytes);
   ElMessage.success('追加成功');
   durationDialogVisible.value = false;
   load();
 }
 
 const fmtSec = (s: number) => `${Math.floor(s / 60)} 分钟`;
+const fmtTime = (t: string) => {
+  if (!t) return '';
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+};
 
 onMounted(load);
 </script>
@@ -114,14 +152,16 @@ onMounted(load);
           <template #default="{ row }">{{ row.current_line_id ?? '未分配' }}</template>
         </el-table-column>
         <el-table-column label="套餐到期" width="170">
-          <template #default="{ row }">{{ row.plan_expired_at || '未开通' }}</template>
+          <template #default="{ row }">{{ row.plan_expired_at ? fmtTime(row.plan_expired_at) : '未开通' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'danger'">{{ row.status === 1 ? '正常' : '禁用' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="注册时间" width="170" />
+        <el-table-column prop="created_at" label="注册时间" width="170">
+          <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
@@ -176,10 +216,36 @@ onMounted(load);
       </template>
     </el-dialog>
 
-    <el-dialog v-model="durationDialogVisible" title="追加时长" width="400px">
+    <el-dialog v-model="durationDialogVisible" title="追加时长" width="420px">
       <el-form label-width="100px">
-        <el-form-item label="追加天数" required>
-          <el-input-number v-model="durationDays" :min="1" :max="3650" style="width:100%" />
+        <el-form-item label="追加时长" required>
+          <div style="display:flex;gap:8px;width:100%">
+            <el-input-number
+              v-model="durationAmount"
+              :min="1"
+              :max="durationMaxMap[durationUnit]"
+              style="flex:1"
+            />
+            <el-select v-model="durationUnit" style="width:90px">
+              <el-option
+                v-for="opt in durationUnitOptions"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+          </div>
+        </el-form-item>
+        <el-form-item label="追加流量">
+          <div style="display:flex;align-items:center;gap:8px">
+            <el-input-number v-model="durationTrafficGB" :min="0" :max="10240" style="flex:1" />
+            <span style="color:#666">GB（0 = 不追加）</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="换算">
+          <span style="color:#666;font-size:13px">
+            ≈ {{ (toSeconds(durationAmount, durationUnit) / 86400).toFixed(2) }} 天
+          </span>
         </el-form-item>
         <el-alert type="info" :closable="false" show-icon>
           <template #default>

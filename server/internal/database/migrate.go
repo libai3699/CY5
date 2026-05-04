@@ -23,6 +23,7 @@ func Migrate() {
 		&model.UserNoticeRead{},
 		&model.Quote{},
 		&model.PaymentConfig{},
+		&model.DurationLog{},
 	)
 	if err != nil {
 		log.Fatalf("[migrate] 建表失败: %v", err)

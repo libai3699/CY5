@@ -93,6 +93,7 @@ func Setup(r *gin.Engine) {
 			authGroup.PUT("/users/:id", admin.UpdateUser)
 			authGroup.DELETE("/users/:id", admin.DeleteUser)
 			authGroup.POST("/users/:id/add-duration", admin.AddUserDuration)
+			authGroup.GET("/duration-logs", admin.ListDurationLogs)
 
 			// 设备管理
 			authGroup.GET("/devices", admin.ListDevices)

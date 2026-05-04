@@ -22,9 +22,7 @@ func GetProfile(c *gin.Context) {
 	}
 
 	// 检查套餐是否过期
-	hasPlan := user.CurrentPlanID != nil &&
-		user.PlanExpiredAt != nil &&
-		user.PlanExpiredAt.After(time.Now())
+	hasPlan := userHasPlan(user)
 
 	remaining := freeRemaining(user)
 
@@ -44,9 +42,7 @@ func GetUserStatus(c *gin.Context) {
 		return
 	}
 
-	hasPlan := user.CurrentPlanID != nil &&
-		user.PlanExpiredAt != nil &&
-		user.PlanExpiredAt.After(time.Now())
+	hasPlan := userHasPlan(user)
 
 	remaining := freeRemaining(user)
 
@@ -106,9 +102,7 @@ func UserHeartbeat(c *gin.Context) {
 		return
 	}
 
-	hasPlan := user.CurrentPlanID != nil &&
-		user.PlanExpiredAt != nil &&
-		user.PlanExpiredAt.After(time.Now())
+	hasPlan := userHasPlan(user)
 	if !hasPlan {
 		used := user.FreeUsedSeconds + seconds
 		if used > user.FreeLimitSeconds {
@@ -158,6 +152,11 @@ func RemoveLoginDevice(c *gin.Context) {
 func formatGB(bytes int64) string {
 	gb := float64(bytes) / 1024 / 1024 / 1024
 	return strconv.FormatFloat(gb, 'f', 2, 64) + " GB"
+}
+
+// userHasPlan 判断用户是否有有效套餐（只要 plan_expired_at 未过期即可）
+func userHasPlan(user model.User) bool {
+	return user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now())
 }
 
 func freeRemaining(user model.User) int {

@@ -37,7 +37,19 @@ func (h *noticeHub) Push(userID uint64, notice model.Notice) {
 	if err != nil {
 		return
 	}
+	h.pushRaw(userID, payload)
+}
 
+// PushEvent 推送自定义事件给指定用户
+func (h *noticeHub) PushEvent(userID uint64, event string, data interface{}) {
+	payload, err := json.Marshal(gin.H{"event": event, "data": data})
+	if err != nil {
+		return
+	}
+	h.pushRaw(userID, payload)
+}
+
+func (h *noticeHub) pushRaw(userID uint64, payload []byte) {
 	h.mu.RLock()
 	clients := h.clients[userID]
 	for ch := range clients {

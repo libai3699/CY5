@@ -18,6 +18,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('#/views/users/UserDevicesPage.vue'),
         meta: { icon: 'carbon:mobile', title: '设备管理' },
       },
+      {
+        name: 'DurationLogPage',
+        path: '/users/duration-logs',
+        component: () => import('#/views/users/DurationLogPage.vue'),
+        meta: { icon: 'carbon:time', title: '追加记录' },
+      },
     ],
   },
   {

@@ -141,16 +141,20 @@ class RemoteVpnLineLoader {
 
   String _displayNodeName(String rawName) {
     var name = rawName.trim();
+    // URL decode
+    try { name = Uri.decodeComponent(name); } catch (_) {}
+    // 去掉 | 或 ' - ' 后面的内容
     for (final separator in ['|', ' - ']) {
       final index = name.indexOf(separator);
       if (index > 0) name = name.substring(0, index).trim();
     }
-    name = name.replaceAll(RegExp(r'\s+'), ' ');
+    // 去掉倍率后缀，如 -0.1倍、x0.5、×2（必须有倍/x/×字符才去掉）
+    name = name.replaceAll(RegExp(r'[-_\s]*[\d.]+\s*[xX×倍][^\s]*'), '');
+    name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
     final flag = RegExp(r'^([\u{1F1E6}-\u{1F1FF}]{2})\s*', unicode: true).firstMatch(name);
     if (flag == null) return name;
     final rest = name.substring(flag.end).trim();
-    final region = rest.replaceFirst(RegExp(r'[-_\s]*\d+\s*$'), '').trim();
-    return region.isEmpty ? flag.group(1)! : '${flag.group(1)!} $region';
+    return rest.isEmpty ? flag.group(1)! : '${flag.group(1)!} $rest';
   }
 
   Future<VpnNode> _fetchRemoteLine() async {

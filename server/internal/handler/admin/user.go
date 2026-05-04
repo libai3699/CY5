@@ -7,6 +7,7 @@ import (
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/ws"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -188,10 +189,11 @@ func safeUserAdmin(u model.User) gin.H {
 }
 
 type addDurationReq struct {
-	Days int `json:"days" binding:"required,min=1"` // 追加的天数
+	Seconds      int64 `json:"seconds" binding:"required,min=1"`
+	TrafficBytes int64 `json:"traffic_bytes"` // 追加流量字节数，0=不追加
 }
 
-// AddUserDuration 给用户追加时长
+// AddUserDuration 给用户追加时长和流量
 func AddUserDuration(c *gin.Context) {
 	id := c.Param("id")
 	var user model.User
@@ -206,20 +208,49 @@ func AddUserDuration(c *gin.Context) {
 		return
 	}
 
-	// 计算新的过期时间
 	now := time.Now()
+	duration := time.Duration(req.Seconds) * time.Second
 	var newExpiredAt time.Time
-	
+
 	if user.PlanExpiredAt == nil || user.PlanExpiredAt.Before(now) {
-		// 如果没有套餐或已过期，从当前时间开始计算
-		newExpiredAt = now.AddDate(0, 0, req.Days)
+		newExpiredAt = now.Add(duration)
 	} else {
-		// 如果还有剩余时长，在原有基础上追加
-		newExpiredAt = user.PlanExpiredAt.AddDate(0, 0, req.Days)
+		newExpiredAt = user.PlanExpiredAt.Add(duration)
 	}
 
-	database.DB.Model(&user).Update("plan_expired_at", newExpiredAt)
-	
+	updates := map[string]interface{}{
+		"plan_expired_at": newExpiredAt,
+	}
+
+	// 追加流量
+	if req.TrafficBytes > 0 {
+		if user.TrafficLimitBytes == nil {
+			updates["traffic_limit_bytes"] = req.TrafficBytes
+		} else {
+			updates["traffic_limit_bytes"] = *user.TrafficLimitBytes + req.TrafficBytes
+		}
+	}
+
+	database.DB.Model(&user).Updates(updates)
+
+	// 写入追加记录
+	operatorName := c.GetString("admin_username")
+	if operatorName == "" {
+		operatorName = "admin"
+	}
+	database.DB.Create(&model.DurationLog{
+		UserID:       user.ID,
+		Username:     user.Username,
+		Seconds:      req.Seconds,
+		TrafficBytes: req.TrafficBytes,
+		OperatorName: operatorName,
+	})
+
+	// 推送 WS 通知，让用户端实时刷新状态
+	ws.Notices.PushEvent(user.ID, "status_update", gin.H{
+		"msg": "管理员已为您追加时长/流量，请刷新查看",
+	})
+
 	handler.OK(c, gin.H{
 		"msg":             "追加成功",
 		"plan_expired_at": newExpiredAt,

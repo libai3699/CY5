@@ -166,10 +166,12 @@ func canLoginDevice(user model.User, deviceID string) bool {
 
 	// 3. 检查设备数量上限
 	maxDevices := 1
-	if user.CurrentPlanID != nil && user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now()) {
-		var plan model.Plan
-		if err := database.DB.First(&plan, *user.CurrentPlanID).Error; err == nil && plan.MaxDevices > 0 {
-			maxDevices = plan.MaxDevices
+	if user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now()) {
+		if user.CurrentPlanID != nil {
+			var plan model.Plan
+			if err := database.DB.First(&plan, *user.CurrentPlanID).Error; err == nil && plan.MaxDevices > 0 {
+				maxDevices = plan.MaxDevices
+			}
 		}
 	}
 

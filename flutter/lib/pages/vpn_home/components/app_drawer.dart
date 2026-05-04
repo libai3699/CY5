@@ -149,15 +149,24 @@ class AppDrawer extends StatelessWidget {
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.account_circle_rounded, color: Color(0xFFE11D48), size: 24),
-                    title: Text(
-                      username == null || username!.isEmpty ? '登录账号' : '已登录：$username',
-                      style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w700),
+                  if (username == null || username!.isEmpty)
+                    ListTile(
+                      leading: const Icon(Icons.account_circle_rounded, color: Color(0xFFE11D48), size: 24),
+                      title: const Text(
+                        '登录账号',
+                        style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                      onTap: onLoginPressed,
+                    )
+                  else
+                    ListTile(
+                      leading: const Icon(Icons.account_circle_rounded, color: Color(0xFFE11D48), size: 24),
+                      title: Text(
+                        '已登录：$username',
+                        style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w700),
+                      ),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
-                    onTap: onLoginPressed,
-                  ),
                   if (username != null && username!.isNotEmpty)
                     ListTile(
                       leading: const Icon(Icons.devices_rounded, color: Color(0xFFE11D48), size: 24),
