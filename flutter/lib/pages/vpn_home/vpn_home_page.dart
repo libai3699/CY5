@@ -45,6 +45,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   VpnNode? _selectedNode;
   String _deviceId = '';
   AuthSession? _session;
+  int _quoteKey = 0; // 每次下拉刷新递增，强制 QuoteCard 重建
   AppStatus _appStatus = const AppStatus(
     planLevel: '免费体验',
     remainingSeconds: 0,
@@ -159,7 +160,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
           : await _appLoader.loadUserStatus(token);
       print('[LOAD_APP_DATA] status ok: ${status.remainingTimeText} / ${status.trafficRemaining}');
       if (!mounted) return;
-      setState(() { _appStatus = status; });
+      setState(() {
+        _appStatus = status;
+      });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
     } catch (error) {
@@ -406,11 +409,16 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
     try {
       await _vpnChannel.stopVpn();
-    } on PlatformException catch (error) {
-      setState(() {
-        _status = VpnStatus.disconnected;
-        _message = error.message ?? 'VPN stop failed';
-      });
+    } catch (error) {
+      print('[DISCONNECT] error: $error');
+    } finally {
+      // 无论如何都强制设置为断开状态
+      if (mounted) {
+        setState(() {
+          _status = VpnStatus.disconnected;
+          _message = null;
+        });
+      }
     }
   }
 
@@ -565,11 +573,14 @@ class _VpnHomePageState extends State<VpnHomePage> {
                 onSupportPressed: _openSupportH5,
               ),
               NoticeBar(token: _session?.token, onStatusUpdate: _loadAppData),
-              const QuoteCard(),
+              QuoteCard(key: ValueKey(_quoteKey)),
               Expanded(
                 child: RefreshIndicator(
                   color: const Color(0xFFE11D48),
-                  onRefresh: _loadAppData,
+                  onRefresh: _isConnected ? () async {} : () async {
+                    setState(() => _quoteKey++);
+                    await _loadAppData();
+                  },
                   child: VpnControlPanel(
                     status: _status,
                     node: _selectedNode,

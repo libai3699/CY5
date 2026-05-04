@@ -239,7 +239,7 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 60),
               child: Text(
                 'v$kAppVersion',
                 style: TextStyle(

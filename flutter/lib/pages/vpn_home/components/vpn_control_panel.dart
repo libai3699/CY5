@@ -45,6 +45,7 @@ class VpnControlPanel extends StatelessWidget {
     };
 
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(20, compact ? 8 : 12, 20, 24),
       child: ConstrainedBox(
         constraints: BoxConstraints(
