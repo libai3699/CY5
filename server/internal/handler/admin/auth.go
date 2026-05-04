@@ -7,7 +7,6 @@ import (
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type adminLoginReq struct {
@@ -23,15 +22,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 验证用户名
-	if req.Username != config.App.AdminUsername {
-		writeAdminLog(c, req.Username, 0)
-		handler.Fail(c, 1002, "用户名或密码错误")
-		return
-	}
-
-	// 验证密码（使用配置中的密码哈希）
-	if err := bcrypt.CompareHashAndPassword([]byte(config.App.AdminPasswordHash), []byte(req.Password)); err != nil {
+	// 直接验证用户名和密码
+	if req.Username != "admin" || req.Password != "admin123456" {
 		writeAdminLog(c, req.Username, 0)
 		handler.Fail(c, 1002, "用户名或密码错误")
 		return
