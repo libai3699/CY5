@@ -23,7 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
         } else {
           // 获取重定向路径
           const redirect = route.query.redirect as string;
-          await router.push(redirect || '/users/list');
+          await router.push(redirect || '/workspace');
         }
       }
     } finally {

@@ -22,6 +22,8 @@ const form = reactive({
   username: 'admin',
 });
 
+// 默认账号密码已填入，直接点登录即可
+
 const loading = ref(false);
 
 async function onSubmit() {
