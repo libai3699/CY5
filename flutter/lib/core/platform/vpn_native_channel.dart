@@ -21,14 +21,27 @@ class VpnNativeChannel {
     if (_initialized) return;
     _v2ray = FlutterV2ray(
       onStatusChanged: (status) {
-        final s = status.state.toLowerCase();
-        print('[V2RAY] status changed: ${status.state}');
-        if (s.contains('connect') && !s.contains('disconnect')) {
-          _statusController.add('connected');
-        } else if (s.contains('disconnect') || s.contains('stop')) {
+        final s = status.state.toLowerCase().trim();
+        print('[V2RAY] status changed: "${status.state}" → normalized: "$s"');
+        // 明确匹配各种断开状态
+        if (s == 'stopped' ||
+            s == 'disconnected' ||
+            s.contains('disconnect') ||
+            s.contains('stop') ||
+            s == 'none' ||
+            s == 'idle' ||
+            s == 'error' ||
+            s.contains('fail')) {
           _statusController.add('disconnected');
-        } else if (s.contains('connecting')) {
+        } else if (s == 'connecting' || s.contains('connecting')) {
           _statusController.add('connecting');
+        } else if (s == 'connected' || s.contains('connect')) {
+          // 只有明确 connected 才发 connected，避免误判
+          _statusController.add('connected');
+        } else {
+          // 未知状态也视为断开，更安全
+          print('[V2RAY] unknown status treated as disconnected: "${status.state}"');
+          _statusController.add('disconnected');
         }
       },
     );
@@ -52,19 +65,31 @@ class VpnNativeChannel {
     }
     if (!Platform.isAndroid) {
       _statusController.add('connecting');
-      final success = await WindowsVpnController.start(node);
-      if (!success) {
+      WindowsVpnController.onProcessExit = () {
         _statusController.add('disconnected');
-        return '启动失败';
+      };
+      try {
+        final config =
+            FlutterV2ray.parseFromURL(node.rawUri.trim()).getFullConfiguration();
+        final success = await WindowsVpnController.start(node, configJson: config);
+        if (!success) {
+          _statusController.add('disconnected');
+          return '启动失败';
+        }
+        _statusController.add('connected');
+        return null;
+      } catch (e) {
+        _statusController.add('disconnected');
+        return '连接失败: $e';
       }
-      _statusController.add('connected');
-      return null;
     }
 
     await _ensureInitialized();
     try {
       final rawUri = node.rawUri.trim();
-      print('[V2RAY] startVpn rawUri: ${rawUri.substring(0, rawUri.length.clamp(0, 80))}');
+      print(
+        '[V2RAY] startVpn rawUri: ${rawUri.substring(0, rawUri.length.clamp(0, 80))}',
+      );
       final parser = FlutterV2ray.parseFromURL(rawUri);
       _statusController.add('connecting');
       await _v2ray!.startV2Ray(
@@ -94,14 +119,14 @@ class VpnNativeChannel {
       return null;
     }
     await _ensureInitialized();
+    // 先发 disconnected，防止 stopV2Ray 触发的回调覆盖状态
+    _statusController.add('disconnected');
     try {
       await _v2ray!.stopV2Ray();
       print('[V2RAY] stopV2Ray called');
     } catch (e) {
       print('[V2RAY] stopV2Ray error: $e');
     }
-    // 手动触发断开状态，防止回调不触发
-    _statusController.add('disconnected');
     return null;
   }
 

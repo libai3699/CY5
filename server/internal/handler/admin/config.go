@@ -48,18 +48,26 @@ type updateConfigReq struct {
 func UpdateConfig(c *gin.Context) {
 	key := c.Param("key")
 
-	var cfg model.AppConfig
-	if err := database.DB.Where("key_name = ?", key).First(&cfg).Error; err != nil {
-		handler.Fail(c, 404, "配置项不存在")
-		return
-	}
-
 	var req updateConfigReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handler.Fail(c, 400, "参数错误")
 		return
 	}
 
-	database.DB.Model(&cfg).Update("value", req.Value)
-	handler.OK(c, gin.H{"msg": "更新成功"})
+	// 用 map 强制更新，避免 GORM 对空字符串零值跳过更新的问题
+	result := database.DB.Model(&model.AppConfig{}).
+		Where("key_name = ?", key).
+		Updates(map[string]interface{}{"value": req.Value})
+	if result.Error != nil {
+		handler.Fail(c, 500, "保存失败: "+result.Error.Error())
+		return
+	}
+	if result.RowsAffected == 0 {
+		handler.Fail(c, 404, "配置项不存在")
+		return
+	}
+
+	var cfg model.AppConfig
+	database.DB.Where("key_name = ?", key).First(&cfg)
+	handler.OK(c, gin.H{"msg": "更新成功", "config": cfg})
 }

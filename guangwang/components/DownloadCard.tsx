@@ -1,3 +1,5 @@
+import Image from 'next/image';
+
 export interface DownloadCardProps {
   appName: string;
   version: string;
@@ -23,12 +25,8 @@ export default function DownloadCard({
 }: DownloadCardProps) {
   return (
     <div className="glass-card flex flex-col items-center p-8 text-center transition-all duration-300 hover:-translate-y-1 hover:border-purple-500/30">
-      <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-purple-600 to-blue-600 shadow-xl shadow-purple-500/30">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.15)" />
-          <circle cx="12" cy="12" r="4" fill="white" />
-          <path d="M8 12l2 2 4-4" stroke="rgba(124,58,237,0.8)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+      <div className="mb-5 h-20 w-20 overflow-hidden rounded-3xl shadow-xl shadow-purple-500/30">
+        <Image src="/logo.png" alt={appName} width={80} height={80} className="h-full w-full object-cover" />
       </div>
 
       <h3 className="mb-2 text-xl font-bold text-white">{appName}</h3>

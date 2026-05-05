@@ -19,4 +19,4 @@ export const createConfig = (data: {
 }) => requestClient.post<AppConfig>('/configs', data);
 
 export const updateConfig = (key: string, value: string) =>
-  requestClient.put(`/configs/${key}`, { value });
+  requestClient.put(`/configs/${encodeURIComponent(key)}`, { value });

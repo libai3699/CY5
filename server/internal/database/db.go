@@ -3,6 +3,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"cy5vpn/server/internal/config"
 
@@ -38,8 +39,15 @@ func Init() {
 	if err != nil {
 		log.Fatalf("[database] 获取底层 DB 失败: %v", err)
 	}
-	sqlDB.SetMaxOpenConns(50)
-	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetMaxIdleConns(20)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+	sqlDB.SetConnMaxIdleTime(time.Minute * 10)
+
+	// 测试连接
+	if err := sqlDB.Ping(); err != nil {
+		log.Fatalf("[database] 连接测试失败: %v", err)
+	}
 
 	DB = db
 	log.Println("[database] 连接成功")

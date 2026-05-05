@@ -62,6 +62,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Timer? _heartbeatTimer;
   Timer? _remainingTimer;
   StreamSubscription<String>? _statusSubscription;
+  int _heartbeatFailCount = 0; // 心跳失败计数
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
@@ -247,9 +248,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   void _syncHeartbeatTimer() {
     _heartbeatTimer?.cancel();
+    _heartbeatFailCount = 0; // 重置失败计数
     _sendHeartbeat(seconds: 1);
-    _heartbeatTimer = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) _sendHeartbeat(seconds: 60);
+    // 改为30秒心跳间隔，避免VPN在心跳前断开
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _sendHeartbeat(seconds: 30);
     });
   }
 
@@ -257,26 +260,41 @@ class _VpnHomePageState extends State<VpnHomePage> {
     final token = _session?.token;
     if (token == null || token.isEmpty || !_isConnected) return;
     final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8);
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
       final request = await client
           .postUrl(Uri.parse(kUserHeartbeatApiUrl))
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 15));
       request.headers.contentType = ContentType.json;
       request.headers.set('Authorization', 'Bearer $token');
       request.write(jsonEncode({'seconds': seconds}));
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response = await request.close().timeout(const Duration(seconds: 15));
       await response.drain<void>();
       if (response.statusCode == 401) {
         await _handleTokenExpired();
         return;
       }
+      // 心跳成功，重置失败计数
+      _heartbeatFailCount = 0;
       await _loadAppData();
       if (_appStatus.remainingSeconds <= 0 && !_hasActivePlan) {
         await _disconnect();
       }
-    } catch (_) {
-      // 心跳失败不打断本次连接，下次继续上报。
+    } catch (e) {
+      // 心跳失败，增加失败计数
+      _heartbeatFailCount++;
+      print('[HEARTBEAT] failed (count: $_heartbeatFailCount): $e');
+      
+      // 连续失败3次，认为VPN已断开，主动断开并提示用户
+      if (_heartbeatFailCount >= 3 && _isConnected) {
+        print('[HEARTBEAT] 连续失败3次，主动断开VPN');
+        await _disconnect();
+        if (mounted) {
+          setState(() {
+            _message = 'VPN连接已断开，请重新连接';
+          });
+        }
+      }
     } finally {
       client.close(force: true);
     }
