@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from 'vue';
+import { reactive, ref } from 'vue';
 
 import {
   ElButton,
@@ -11,7 +11,6 @@ import {
 } from 'element-plus';
 import 'element-plus/dist/index.css';
 
-import { captchaApi } from '#/api';
 import { useAuthStore } from '#/store';
 
 defineOptions({ name: 'Login' });
@@ -25,14 +24,6 @@ const form = reactive({
 });
 
 const loading = ref(false);
-const totpSecret = ref('');
-const totpUri = ref('');
-
-async function loadCaptchaSetup() {
-  const data = await captchaApi();
-  totpSecret.value = data.secret;
-  totpUri.value = data.otpauth;
-}
 
 async function onSubmit() {
   loading.value = true;
@@ -45,7 +36,6 @@ async function onSubmit() {
   }
 }
 
-onMounted(loadCaptchaSetup);
 </script>
 
 <template>
@@ -67,11 +57,6 @@ onMounted(loadCaptchaSetup);
           <ElFormItem label="Google 验证码">
             <ElInput v-model="form.captcha" maxlength="6" size="large" />
           </ElFormItem>
-          <div class="cy-totp-box">
-            <div>首次绑定密钥</div>
-            <strong>{{ totpSecret }}</strong>
-            <small>{{ totpUri }}</small>
-          </div>
           <ElButton
             class="cy-login-button"
             :loading="loading || authStore.loginLoading"
@@ -119,28 +104,6 @@ onMounted(loadCaptchaSetup);
   margin: 8px 0 0;
   color: #64748b;
   font-size: 14px;
-}
-
-.cy-totp-box {
-  margin-bottom: 16px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-  padding: 12px;
-  color: #475569;
-  font-size: 12px;
-}
-
-.cy-totp-box strong {
-  display: block;
-  margin: 6px 0;
-  color: #0f172a;
-  font-size: 14px;
-  letter-spacing: 1px;
-}
-
-.cy-totp-box small {
-  display: block;
-  overflow-wrap: anywhere;
 }
 
 .cy-login-button {
