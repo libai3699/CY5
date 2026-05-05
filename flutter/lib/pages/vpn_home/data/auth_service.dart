@@ -83,12 +83,17 @@ class AuthService {
   }
 
   Future<void> logout(String token) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.postUrl(Uri.parse(kUserLogoutApiUrl));
+      final request = await client
+          .postUrl(Uri.parse(kUserLogoutApiUrl))
+          .timeout(const Duration(seconds: 8));
       request.headers.set('Authorization', 'Bearer $token');
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 8));
       await response.drain<void>();
+    } catch (e) {
+      print('[AUTH] logout error: $e');
     } finally {
       client.close(force: true);
       await clearSession();
@@ -96,11 +101,14 @@ class AuthService {
   }
 
   Future<List<LoginDevice>> loadDevices(String token) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
-      final request = await client.getUrl(Uri.parse(kUserDevicesApiUrl));
+      final request = await client
+          .getUrl(Uri.parse(kUserDevicesApiUrl))
+          .timeout(const Duration(seconds: 10));
       request.headers.set('Authorization', 'Bearer $token');
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 10));
       final raw = await response.transform(utf8.decoder).join();
       final decoded = jsonDecode(raw);
       final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
@@ -114,11 +122,14 @@ class AuthService {
   }
 
   Future<void> removeDevice(String token, int id) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
-      final request = await client.deleteUrl(Uri.parse('$kUserDevicesApiUrl/$id'));
+      final request = await client
+          .deleteUrl(Uri.parse('$kUserDevicesApiUrl/$id'))
+          .timeout(const Duration(seconds: 10));
       request.headers.set('Authorization', 'Bearer $token');
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 10));
       await response.drain<void>();
     } finally {
       client.close(force: true);
@@ -133,12 +144,15 @@ class AuthService {
   }
 
   Future<AuthSession> _postAuth(String url, Map<String, dynamic> body) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
-      final request = await client.postUrl(Uri.parse(url));
+      final request = await client
+          .postUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 10));
       final raw = await response.transform(utf8.decoder).join();
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) throw Exception('接口数据格式错误');

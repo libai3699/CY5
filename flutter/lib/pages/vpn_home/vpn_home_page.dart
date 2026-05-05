@@ -17,7 +17,7 @@ import 'contact_page.dart';
 import 'data/auth_service.dart';
 import 'data/api_config.dart';
 import 'data/device_identity.dart';
-import 'data/remote_app_loader.dart';
+import 'data/remote_app_loader.dart' show RemoteAppLoader, TokenExpiredException;
 import 'data/remote_vpn_line_loader.dart';
 import 'login_devices_page.dart';
 import 'models/app_status.dart';
@@ -49,7 +49,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   AppStatus _appStatus = const AppStatus(
     planLevel: '免费体验',
     remainingSeconds: 0,
-    remainingTimeText: '已到期',
+    remainingTimeText: '未登录',
     trafficRemaining: '0 GB',
   );
   Map<String, String> _appConfig = const {};
@@ -70,10 +70,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
   @override
   void initState() {
     super.initState();
-    _initDeviceAndAuth();
-    _loadAppData();
-    _loadNodes();
     _listenVpnStatus();
+    _bootstrap();
   }
 
   @override
@@ -85,25 +83,30 @@ class _VpnHomePageState extends State<VpnHomePage> {
     super.dispose();
   }
 
-  Future<void> _initDeviceAndAuth() async {
+  Future<void> _bootstrap() async {
     try {
       final session = await _authService.loadSession();
-      print('[AUTH] session loaded: ${session?.username}, token empty: ${session?.token.isEmpty}');
+      if (mounted && session != null) {
+        setState(() { _session = session; });
+      }
+    } catch (_) {}
+    unawaited(_loadAppData());
+    unawaited(_loadNodes());
+    unawaited(_registerDevice());
+  }
+
+  Future<void> _registerDevice() async {
+    try {
       final displayId = await _deviceIdentity.register();
       if (!mounted) return;
-      setState(() {
-        _deviceId = displayId.isNotEmpty ? displayId : '获取中';
-        _session = session;
-      });
-      if (session != null) _applySessionStatus(session);
-      // session 加载完后重新拉一次状态，确保用 token 请求
-      await _loadAppData();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _message = '设备上报失败：$error';
-      });
+      setState(() { _deviceId = displayId.isNotEmpty ? displayId : '获取中'; });
+    } catch (_) {
+      if (mounted) setState(() { _deviceId = '获取中'; });
     }
+  }
+
+  Future<void> _initDeviceAndAuth() async {
+    // 保留兼容，实际由 _bootstrap 替代
   }
 
   void _listenVpnStatus() {
@@ -153,30 +156,62 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   Future<void> _loadAppData() async {
+    final token = _session?.token;
     try {
-      final token = _session?.token;
       final status = token == null || token.isEmpty
           ? await _appLoader.loadStatus()
           : await _appLoader.loadUserStatus(token);
-      print('[LOAD_APP_DATA] status ok: ${status.remainingTimeText} / ${status.trafficRemaining}');
       if (!mounted) return;
-      setState(() {
-        _appStatus = status;
-      });
+      setState(() { _appStatus = status; });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
-    } catch (error) {
-      print('[LOAD_APP_DATA] error: $error');
-      if (!mounted) return;
-      setState(() { _message = 'App 配置加载失败：$error'; });
-    }
+    } on TokenExpiredException {
+      await _handleTokenExpired();
+      return;
+    } catch (_) {}
     try {
       final config = await _appLoader.loadConfig();
       if (!mounted) return;
       setState(() { _appConfig = config; });
-    } catch (e) {
-      print('[LOAD_CONFIG] error: $e');
-    }
+    } catch (_) {}
+  }
+
+  /// Token 过期：清空本地 session，断开 VPN，提示用户重新登录
+  Future<void> _handleTokenExpired() async {
+    print('[AUTH] token expired, clearing session');
+    if (_isConnected) await _disconnect();
+    await _authService.clearSession();
+    if (!mounted) return;
+    setState(() {
+      _session = null;
+      _appStatus = const AppStatus(
+        planLevel: '免费体验',
+        remainingSeconds: 0,
+        remainingTimeText: '未登录',
+        trafficRemaining: '0 GB',
+      );
+      _message = null;
+    });
+    // 加载公开状态（不带 token）
+    try {
+      final status = await _appLoader.loadStatus();
+      if (!mounted) return;
+      setState(() { _appStatus = status; });
+    } catch (_) {}
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('登录已过期，请重新登录'),
+        backgroundColor: const Color(0xFFE11D48),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: '去登录',
+          textColor: Colors.white,
+          onPressed: _openAuthPage,
+        ),
+      ),
+    );
   }
 
   void _syncRemainingTimer(int seconds) {
@@ -220,14 +255,21 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Future<void> _sendHeartbeat({required int seconds}) async {
     final token = _session?.token;
     if (token == null || token.isEmpty || !_isConnected) return;
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.postUrl(Uri.parse(kUserHeartbeatApiUrl));
+      final request = await client
+          .postUrl(Uri.parse(kUserHeartbeatApiUrl))
+          .timeout(const Duration(seconds: 8));
       request.headers.contentType = ContentType.json;
       request.headers.set('Authorization', 'Bearer $token');
       request.write(jsonEncode({'seconds': seconds}));
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 8));
       await response.drain<void>();
+      if (response.statusCode == 401) {
+        await _handleTokenExpired();
+        return;
+      }
       await _loadAppData();
       if (_appStatus.remainingSeconds <= 0 && !_hasActivePlan) {
         await _disconnect();
@@ -258,25 +300,23 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   Future<void> _loadNodes() async {
-    setState(() {
-      _isLoadingNodes = true;
-      _message = null;
-    });
-
+    if (!mounted) return;
+    setState(() { _isLoadingNodes = true; _message = null; });
     try {
-      await _loadAppData();
       final nodes = await _lineLoader.load();
+      if (!mounted) return;
       setState(() {
         _nodes = nodes;
         _selectedNode = nodes.isNotEmpty ? nodes.first : null;
         _isLoadingNodes = false;
       });
     } catch (error) {
+      print('[LOAD_NODES] error: $error');
+      if (!mounted) return;
       setState(() {
-        _nodes = const [];
-        _selectedNode = null;
         _isLoadingNodes = false;
-        _message = error.toString();
+        if (_nodes.isEmpty) { _nodes = const []; _selectedNode = null; }
+        _message = '线路加载失败，请点击重试';
       });
     }
   }
@@ -463,9 +503,26 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Future<void> _logoutCurrentDevice() async {
     final token = _session?.token;
     if (token == null || token.isEmpty) return;
-    await _disconnect();
+
+    // 先断开 VPN
+    if (_isConnected || _isConnecting) await _disconnect();
+
+    // 取消定时器
+    _appStatusRefreshTimer?.cancel();
+    _appStatusRefreshTimer = null;
+    _heartbeatTimer?.cancel();
+    _remainingTimer?.cancel();
+
+    // 通知后端退出，并清除本地 session
     await _authService.logout(token);
+
     if (!mounted) return;
+
+    // 关闭 Drawer
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+
     setState(() {
       _session = null;
       _appStatus = const AppStatus(
@@ -474,8 +531,24 @@ class _VpnHomePageState extends State<VpnHomePage> {
         remainingTimeText: '未登录',
         trafficRemaining: '0 GB',
       );
-      _message = '已退出当前设备';
+      _message = null;
     });
+
+    // 重新拉取公开状态
+    try {
+      final status = await _appLoader.loadStatus();
+      if (!mounted) return;
+      setState(() { _appStatus = status; });
+    } catch (_) {}
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已退出登录'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   void _openLoginDevicesPage() {
@@ -529,7 +602,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    print('[BUILD] remainingTimeText=${_appStatus.remainingTimeText} traffic=${_appStatus.trafficRemaining}');
     return Scaffold(
       key: _scaffoldKey,
       drawer: AppDrawer(
@@ -572,7 +644,51 @@ class _VpnHomePageState extends State<VpnHomePage> {
                 onMenuPressed: _openSettingsMenu,
                 onSupportPressed: _openSupportH5,
               ),
-              NoticeBar(token: _session?.token, onStatusUpdate: _loadAppData),
+              NoticeBar(
+                token: _session?.token,
+                onStatusUpdate: (msg) {
+                  _loadAppData();
+                  if (!mounted) return;
+                  showDialog<void>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => AlertDialog(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE4E8),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFE11D48), size: 30),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text('套餐已更新', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF881337))),
+                          const SizedBox(height: 8),
+                          Text(msg, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Color(0xFF9F1239))),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                      actions: [
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('好的'),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                    ),
+                  );
+                },
+              ),
               QuoteCard(key: ValueKey(_quoteKey)),
               Expanded(
                 child: RefreshIndicator(

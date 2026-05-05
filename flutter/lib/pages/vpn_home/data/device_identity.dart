@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -38,9 +39,12 @@ class DeviceIdentity {
     final deviceId = await getOrCreateDeviceId();
     debugPrint('[DEVICE] register device_id: $deviceId');
 
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.postUrl(Uri.parse(kDeviceRegisterUrl));
+      final request = await client
+          .postUrl(Uri.parse(kDeviceRegisterUrl))
+          .timeout(const Duration(seconds: 8));
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode({
         'device_id': deviceId,
@@ -49,7 +53,7 @@ class DeviceIdentity {
         'os_version': Platform.operatingSystemVersion,
         'app_version': '1.0.0',
       }));
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
       debugPrint('[DEVICE] register status: ${response.statusCode}, body: $body');
 

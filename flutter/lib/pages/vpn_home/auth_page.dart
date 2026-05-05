@@ -181,6 +181,27 @@ class _AuthPageState extends State<AuthPage> {
                 ),
                 child: const Text('注册', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
               ),
+              const SizedBox(height: 16),
+              // 忘记密码提示
+              GestureDetector(
+                onTap: _openContact,
+                child: const Text(
+                  '忘记密码？联系客服找回',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF9F1239),
+                    fontSize: 13,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // 注册限制提示
+              const Text(
+                '每台设备最多注册 3 个账号',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Color(0xFFB0B0B0), fontSize: 12),
+              ),
             ],
           ),
         ),

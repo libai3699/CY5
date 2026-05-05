@@ -42,8 +42,27 @@ func ListUsers(c *gin.Context) {
 		Find(&users)
 
 	safe := make([]gin.H, 0, len(users))
+
+	// 批量查出所有用户对应设备的 display_id
+	deviceIDs := make([]string, 0, len(users))
 	for _, u := range users {
-		safe = append(safe, safeUserAdmin(u))
+		if u.DeviceID != "" {
+			deviceIDs = append(deviceIDs, u.DeviceID)
+		}
+	}
+	displayIDMap := make(map[string]string)
+	if len(deviceIDs) > 0 {
+		var devices []model.Device
+		database.DB.Select("device_id, display_id").Where("device_id IN ?", deviceIDs).Find(&devices)
+		for _, d := range devices {
+			displayIDMap[d.DeviceID] = d.DisplayID
+		}
+	}
+
+	for _, u := range users {
+		h := safeUserAdmin(u)
+		h["display_id"] = displayIDMap[u.DeviceID]
+		safe = append(safe, h)
 	}
 
 	handler.OK(c, gin.H{
@@ -248,7 +267,7 @@ func AddUserDuration(c *gin.Context) {
 
 	// 推送 WS 通知，让用户端实时刷新状态
 	ws.Notices.PushEvent(user.ID, "status_update", gin.H{
-		"msg": "管理员已为您追加时长/流量，请刷新查看",
+		"msg": "管理员已为您追加时长/流量",
 	})
 
 	handler.OK(c, gin.H{

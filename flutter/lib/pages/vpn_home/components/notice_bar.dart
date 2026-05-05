@@ -10,7 +10,7 @@ class NoticeBar extends StatefulWidget {
   const NoticeBar({super.key, this.token, this.onStatusUpdate});
 
   final String? token;
-  final VoidCallback? onStatusUpdate; // 收到 status_update 事件时回调
+  final void Function(String msg)? onStatusUpdate;
 
   @override
   State<NoticeBar> createState() => _NoticeBarState();
@@ -47,14 +47,14 @@ class _NoticeBarState extends State<NoticeBar> {
 
   Future<void> _load() async {
     _timer?.cancel();
-    final client = HttpClient();
+    final url = widget.token == null ? kNoticesApiUrl : kUserNoticesApiUrl;
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final url = widget.token == null ? kNoticesApiUrl : kUserNoticesApiUrl;
-      final request = await client.getUrl(Uri.parse(url));
+      final request = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 8));
       if (widget.token != null) {
         request.headers.set('Authorization', 'Bearer ${widget.token}');
       }
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
       if (response.statusCode < 200 || response.statusCode >= 300) return;
 
@@ -67,7 +67,6 @@ class _NoticeBarState extends State<NoticeBar> {
             .map((e) => e['content']?.toString() ?? '')
             .where((s) => s.isNotEmpty)
             .toList();
-
         setState(() {
           _notices = contents;
           _current = 0;
@@ -75,14 +74,11 @@ class _NoticeBarState extends State<NoticeBar> {
         if (contents.length > 1) {
           _timer = Timer.periodic(const Duration(seconds: 4), (_) {
             if (!mounted) return;
-            setState(() {
-              _current = (_current + 1) % _notices.length;
-            });
+            setState(() => _current = (_current + 1) % _notices.length);
           });
         }
       }
     } catch (_) {
-      // 静默处理通知加载失败。
     } finally {
       client.close(force: true);
     }
@@ -101,21 +97,20 @@ class _NoticeBarState extends State<NoticeBar> {
         path: '/api/public/ws/notices',
         queryParameters: {'token': token},
       );
-      print('[WS] connecting to: $uri');
+      print('[WS] connecting: $uri');
       final socket = await WebSocket.connect(uri.toString());
       print('[WS] connected');
       _socket = socket;
       socket.listen(
         (data) {
           print('[WS] received: $data');
-          // 解析事件类型
           try {
             final decoded = jsonDecode(data.toString());
             final event = decoded?['event']?.toString();
-            print('[WS] event: $event');
             if (event == 'status_update') {
-              print('[WS] status_update received, refreshing...');
-              widget.onStatusUpdate?.call();
+              final msg = decoded?['data']?['msg']?.toString() ?? '套餐已更新';
+              print('[WS] status_update msg: $msg');
+              widget.onStatusUpdate?.call(msg);
             }
           } catch (e) {
             print('[WS] parse error: $e');
@@ -123,7 +118,7 @@ class _NoticeBarState extends State<NoticeBar> {
           _load();
         },
         onDone: () {
-          print('[WS] connection closed');
+          print('[WS] closed');
           if (mounted && identical(_socket, socket)) _socket = null;
         },
         onError: (e) {
@@ -134,7 +129,6 @@ class _NoticeBarState extends State<NoticeBar> {
       );
     } catch (e) {
       print('[WS] connect failed: $e');
-      // 静默处理实时通知连接失败。
     }
   }
 

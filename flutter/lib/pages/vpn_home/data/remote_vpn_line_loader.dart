@@ -158,11 +158,21 @@ class RemoteVpnLineLoader {
   }
 
   Future<VpnNode> _fetchRemoteLine() async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+    debugPrint('[VPN_LINE] fetching from: $kVpnLineApiUrl');
     try {
-      final request = await client.getUrl(Uri.parse(kVpnLineApiUrl));
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
+      final request = await client
+          .getUrl(Uri.parse(kVpnLineApiUrl))
+          .timeout(const Duration(seconds: 10));
+      final response = await request
+          .close()
+          .timeout(const Duration(seconds: 10));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 10));
+      debugPrint('[VPN_LINE] fetch status: ${response.statusCode}');
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('线路接口请求失败：${response.statusCode}');
       }

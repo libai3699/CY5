@@ -6,6 +6,7 @@ export interface User {
   phone: string;
   status: number;
   device_id: string;
+  display_id: string;
   free_used_seconds: number;
   free_limit_seconds: number;
   current_line_id: number | null;

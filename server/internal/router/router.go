@@ -35,6 +35,7 @@ func Setup(r *gin.Engine) {
 		publicGroup.POST("/device/register", app.DeviceRegister)
 		publicGroup.POST("/auth/register", app.Register)
 		publicGroup.POST("/auth/login", app.Login)
+		publicGroup.POST("/track", app.TrackEvent)
 	}
 
 	// ── 前台 API（Flutter 调用）──────────────────────────────────
@@ -132,8 +133,9 @@ func Setup(r *gin.Engine) {
 			authGroup.POST("/files/upload", admin.UploadFile)
 			authGroup.DELETE("/files/:key", admin.DeleteFile)
 
-			// 日志
-			authGroup.GET("/logs/user", admin.ListUserLogs)
+			// 埋点统计
+			authGroup.GET("/events", admin.ListPageEvents)
+			authGroup.GET("/events/stats", admin.PageEventStats)
 			authGroup.GET("/logs/admin", admin.ListAdminLogs)
 
 			// 精选语录管理

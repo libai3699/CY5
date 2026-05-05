@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -24,11 +25,16 @@ class _QuoteCardState extends State<QuoteCard> {
   }
 
   Future<void> _loadQuote() async {
-    final client = HttpClient();
+    print('[QUOTE] loading from: $kQuoteApiUrl');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(Uri.parse(kQuoteApiUrl));
-      final response = await request.close();
+      final request = await client
+          .getUrl(Uri.parse(kQuoteApiUrl))
+          .timeout(const Duration(seconds: 8));
+      final response = await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
+      print('[QUOTE] status: ${response.statusCode}');
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(body);
         final data = decoded?['data'];
@@ -37,10 +43,11 @@ class _QuoteCardState extends State<QuoteCard> {
             _content = data['content']?.toString();
             _loading = false;
           });
+          print('[QUOTE] content: $_content');
         }
       }
-    } catch (_) {
-      // 静默失败
+    } catch (e) {
+      print('[QUOTE] error: $e');
     } finally {
       client.close(force: true);
       if (mounted && _loading) setState(() => _loading = false);

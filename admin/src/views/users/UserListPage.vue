@@ -105,7 +105,7 @@ onMounted(load);
       <el-table :data="list" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="username" label="用户名" width="120" />
-        <el-table-column prop="phone" label="手机号" width="130" />
+        <!-- <el-table-column prop="phone" label="手机号" width="130" /> -->
         <el-table-column prop="device_id" label="设备ID" show-overflow-tooltip />
         <el-table-column label="免费时长" width="150">
           <template #default="{ row }">{{ fmtSec(row.free_used_seconds) }} / {{ fmtSec(row.free_limit_seconds) }}</template>
@@ -154,9 +154,9 @@ onMounted(load);
         <el-form-item :label="isEdit ? '新密码（留空不改）' : '密码'" :required="!isEdit">
           <el-input v-model="form.password" type="password" show-password />
         </el-form-item>
-        <el-form-item label="手机号">
+        <!-- <el-form-item label="手机号">
           <el-input v-model="form.phone" />
-        </el-form-item>
+        </el-form-item> -->
         <el-form-item v-if="isEdit" label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">正常</el-radio>

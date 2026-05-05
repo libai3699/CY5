@@ -24,6 +24,7 @@ func Migrate() {
 		&model.Quote{},
 		&model.PaymentConfig{},
 		&model.DurationLog{},
+		&model.PageEvent{},
 	)
 	if err != nil {
 		log.Fatalf("[migrate] 建表失败: %v", err)

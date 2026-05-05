@@ -1,12 +1,13 @@
 fvm use 3.27.0
+flutter build apk --release
+换正式服线路
+
 flutter create my_app
 flutter run
 flutter run -d chrome
 flutter run -d ios
 flutter run -d android
 flutter devices
-flutter build apk
-flutter build apk --release
 flutter build appbundle
 flutter build ios
 flutter build web
@@ -19,9 +20,7 @@ flutter run --debug
 flutter run --release
 flutter doctor
 flutter doctor -v
-fvm use 3.27.0
 fvm flutter run
-fvm flutter build apk
 flutter --version
 flutter upgrade
 flutter channel stable

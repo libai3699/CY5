@@ -1,5 +1,4 @@
 //const String kApiBaseUrl = 'https://vpnapi.wangwei.tech';
-//测试服
 const String kApiBaseUrl = 'http://192.168.70.54:8989';
 
 // ── 公开接口（无需登录/签名）──────────────────────────────────
@@ -22,6 +21,7 @@ const String kUserLogoutApiUrl = '$kApiBaseUrl/api/public/user/logout';
 const String kMarkNoticeReadUrl =
     '$kApiBaseUrl/api/app/user/notices'; // + /{id}/read
 const String kMarkAllReadUrl = '$kApiBaseUrl/api/app/user/notices/read-all';
+const String kTrackEventUrl = '$kApiBaseUrl/api/public/track';
 
 /// App 版本号 — 与 pubspec.yaml 的 version 字段保持一致
 /// 只需在这里改一处，Drawer 底部版本号自动更新

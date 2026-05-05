@@ -6,10 +6,14 @@ import 'package:flutter/material.dart';
 import 'components/common_page_top_bar.dart';
 import 'contact_page.dart';
 import 'data/api_config.dart';
+import 'data/device_identity.dart';
 import 'payment_page.dart';
 
 class PurchasePage extends StatefulWidget {
-  const PurchasePage({super.key});
+  const PurchasePage({super.key, this.userId, this.username});
+
+  final int? userId;
+  final String? username;
 
   @override
   State<PurchasePage> createState() => _PurchasePageState();
@@ -21,6 +25,9 @@ class _PurchasePageState extends State<PurchasePage> {
   String? _error;
   int? _selectedId;
   _BillingCycle _cycle = _BillingCycle.month;
+  final _enterTime = DateTime.now();
+  String _deviceId = '';
+  String _displayId = '';
 
   _Plan? get _selectedPlan {
     for (final plan in _plans) {
@@ -33,6 +40,46 @@ class _PurchasePageState extends State<PurchasePage> {
   void initState() {
     super.initState();
     _loadPlans();
+    _initDevice();
+    _track('enter');
+  }
+
+  @override
+  void dispose() {
+    final stayMs = DateTime.now().difference(_enterTime).inMilliseconds;
+    _track('leave', stayMs: stayMs);
+    super.dispose();
+  }
+
+  Future<void> _initDevice() async {
+    try {
+      final identity = const DeviceIdentity();
+      _deviceId = await identity.getOrCreateDeviceId();
+      _displayId = await identity.getDisplayId();
+    } catch (_) {}
+  }
+
+  Future<void> _track(String event, {int stayMs = 0, String? planName, double? planPrice, String? cycle}) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    try {
+      final req = await client.postUrl(Uri.parse(kTrackEventUrl)).timeout(const Duration(seconds: 5));
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({
+        'page': 'purchase',
+        'event': event,
+        'device_id': _deviceId,
+        'display_id': _displayId,
+        'plan_name': planName ?? _selectedPlan?.name ?? '',
+        'plan_price': planPrice ?? _selectedPlan?.price ?? 0,
+        'cycle': cycle ?? _cycle.label,
+        'stay_ms': stayMs,
+      }));
+      final resp = await req.close().timeout(const Duration(seconds: 5));
+      await resp.drain<void>();
+    } catch (_) {
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> _loadPlans() async {
@@ -297,6 +344,8 @@ class _PurchasePageState extends State<PurchasePage> {
     if (selected == null) return;
 
     final total = selected.totalFor(_cycle);
+    // 埋点：点击购买
+    _track('click_buy', planName: selected.name, planPrice: selected.price, cycle: _cycle.label);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PaymentPage(

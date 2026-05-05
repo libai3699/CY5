@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -38,14 +39,25 @@ class RemoteAppLoader {
   }
 
   Future<Map<String, dynamic>> _getJson(String url, {String? token}) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
     try {
-      final request = await client.getUrl(Uri.parse(url));
+      final request = await client
+          .getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
       if (token != null) {
         request.headers.set('Authorization', 'Bearer $token');
       }
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request
+          .close()
+          .timeout(const Duration(seconds: 10));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 401) {
+        throw TokenExpiredException();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('接口请求失败：${response.statusCode}');
       }
@@ -56,4 +68,10 @@ class RemoteAppLoader {
       client.close(force: true);
     }
   }
+}
+
+/// Token 已过期或无效，需要重新登录
+class TokenExpiredException implements Exception {
+  @override
+  String toString() => 'TokenExpiredException';
 }

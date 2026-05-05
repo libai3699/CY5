@@ -108,6 +108,19 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    meta: { icon: 'carbon:analytics', order: 6, title: '数据统计' },
+    name: 'StatsMgmt',
+    path: '/stats',
+    children: [
+      {
+        name: 'EventStatsPage',
+        path: '/stats/events',
+        component: () => import('#/views/stats/EventStatsPage.vue'),
+        meta: { icon: 'carbon:chart-bar', title: '支付埋点' },
+      },
+    ],
+  },
 ];
 
 export default routes;

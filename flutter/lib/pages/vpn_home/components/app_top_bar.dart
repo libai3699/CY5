@@ -35,8 +35,8 @@ class AppTopBar extends StatelessWidget {
           ),
           IconButton(
             onPressed: onSupportPressed,
-            icon: const Icon(Icons.chat_bubble_rounded),
-            tooltip: 'QQ客服',
+            icon: const Icon(Icons.mark_chat_unread_outlined),
+            tooltip: '联系客服',
             color: const Color(0xFF9F1239),
           ),
         ],
