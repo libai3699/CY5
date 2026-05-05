@@ -53,6 +53,22 @@ android {
         }
     }
 
+    flavorDimensions "app"
+    productFlavors {
+        vpn {
+            dimension "app"
+            applicationId "com.example.cy_vpn"
+            resValue "string", "app_name", "9点9 VPN"
+            manifestPlaceholders = [appLabel: "9点9 VPN"]
+        }
+        acc {
+            dimension "app"
+            applicationId "com.example.cy_acc"
+            resValue "string", "app_name", "9点9 加速器"
+            manifestPlaceholders = [appLabel: "9点9 加速器"]
+        }
+    }
+
     buildTypes {
         release {
             signingConfig signingConfigs.debug

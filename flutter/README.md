@@ -1,6 +1,7 @@
 fvm use 3.27.0
 flutter build apk --release
 换正式服线路
+./apk        //一次打两个包
 
 flutter create my_app
 flutter run

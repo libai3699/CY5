@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'flavor_config.dart';
 import 'pages/vpn_home/vpn_home_page.dart';
 
 class YuexiaVpnApp extends StatelessWidget {
@@ -9,7 +10,7 @@ class YuexiaVpnApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: '9点9 VPN',
+      title: FlavorConfig.appName,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFE11D48),

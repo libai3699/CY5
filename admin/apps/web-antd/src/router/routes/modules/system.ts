@@ -85,7 +85,7 @@ const routes: RouteRecordRaw[] = [
         name: 'ContentConfigsPage',
         path: '/content/configs',
         component: () => import('#/views/content/ContentConfigsPage.vue'),
-        meta: { icon: 'carbon:settings-adjust', title: '系统配置' },
+        meta: { icon: 'carbon:settings-adjust', title: '下载与联系配置' },
       },
     ],
   },

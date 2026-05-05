@@ -86,6 +86,8 @@ desktop.ini
 *.sw?
 .history
 .cursor
+.kiro
+lefthook.yml
 
 # ===== Logs =====
 logs/

@@ -73,6 +73,7 @@ class _PurchasePageState extends State<PurchasePage> {
         'plan_price': planPrice ?? _selectedPlan?.price ?? 0,
         'cycle': cycle ?? _cycle.label,
         'stay_ms': stayMs,
+        'app_type': kFlavor,
       }));
       final resp = await req.close().timeout(const Duration(seconds: 5));
       await resp.drain<void>();
