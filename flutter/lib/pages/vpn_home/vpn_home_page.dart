@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/platform/vpn_native_channel.dart';
 import 'auth_page.dart';
+import 'chatgpt_page.dart';
 import 'components/app_drawer.dart';
 import 'components/app_top_bar.dart';
 import 'components/node_picker_sheet.dart';
@@ -565,6 +566,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
     );
   }
 
+  void _openChatGptPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const ChatGptPage()),
+    );
+  }
+
   void _openPurchasePage() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const PurchasePage()),
@@ -607,6 +614,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       drawer: AppDrawer(
         deviceId: _deviceId.isEmpty ? '读取中' : _deviceId,
         isRefreshingLines: _isRefreshingLines,
+        onChatGptPressed: _openChatGptPage,
         onLoginPressed: _openAuthPage,
         onDevicesPressed: _openLoginDevicesPage,
         onLogoutPressed: _logoutCurrentDevice,

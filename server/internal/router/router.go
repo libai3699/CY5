@@ -76,6 +76,7 @@ func Setup(r *gin.Engine) {
 	adminGroup := r.Group("/api/admin")
 	{
 		// 登录不加密（Admin 用 HTTPS 即可）
+		adminGroup.GET("/auth/captcha", admin.Captcha)
 		adminGroup.POST("/auth/login", admin.Login)
 		adminGroup.POST("/auth/logout", admin.Logout)
 

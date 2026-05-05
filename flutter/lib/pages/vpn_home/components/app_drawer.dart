@@ -9,6 +9,7 @@ class AppDrawer extends StatelessWidget {
     required this.deviceId,
     required this.isRefreshingLines,
     required this.onLoginPressed,
+    required this.onChatGptPressed,
     required this.onDevicesPressed,
     required this.onLogoutPressed,
     required this.onNoticesPressed,
@@ -23,6 +24,7 @@ class AppDrawer extends StatelessWidget {
   final String deviceId;
   final bool isRefreshingLines;
   final VoidCallback onLoginPressed;
+  final VoidCallback onChatGptPressed;
   final VoidCallback onDevicesPressed;
   final VoidCallback onLogoutPressed;
   final VoidCallback onNoticesPressed;
@@ -192,6 +194,18 @@ class AppDrawer extends StatelessWidget {
                         onLogoutPressed();
                       },
                     ),
+                  ListTile(
+                    leading: const Icon(Icons.smart_toy_rounded, color: Color(0xFFE11D48), size: 24),
+                    title: const Text(
+                      'ChatGPT',
+                      style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onChatGptPressed();
+                    },
+                  ),
                   ListTile(
                     leading: const Icon(Icons.notifications_rounded, color: Color(0xFFE11D48), size: 24),
                     title: const Text(
