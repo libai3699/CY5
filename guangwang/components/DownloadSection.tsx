@@ -33,9 +33,9 @@ export default function DownloadSection({ lang }: { lang: Lang }) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
-        // 暂时注释掉解密，直接使用返回的数据
-        // const decrypted = await decryptSiteConfig(data.encrypted);
-        if (!cancelled) setConfig(data);
+        // 使用解密
+        const decrypted = await decryptSiteConfig(data.encrypted);
+        if (!cancelled) setConfig(decrypted);
       } catch (err) {
         if (!cancelled) {
           console.error('[DownloadSection] 获取配置失败:', err);

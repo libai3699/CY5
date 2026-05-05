@@ -53,10 +53,9 @@ async function aesDecrypt(encoded: string) {
 }
 
 export async function decryptSiteConfig(encrypted: string): Promise<DownloadConfig> {
-  // 暂时注释掉加密功能，直接解析JSON
-  // const plaintext = await aesDecrypt(encrypted);
-  // const payload = JSON.parse(plaintext);
-  const payload = JSON.parse(encrypted);
+  // 使用解密功能
+  const plaintext = await aesDecrypt(encrypted);
+  const payload = JSON.parse(plaintext);
   const config: BackendConfig = payload?.data ?? payload;
 
   return {

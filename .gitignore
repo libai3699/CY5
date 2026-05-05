@@ -70,6 +70,14 @@ admin/**/vite.config.mjs.*
 admin/**/vite.config.js.*
 admin/**/vite.config.ts.*
 
+# ===== Guangwang (Next.js) =====
+guangwang/node_modules/
+guangwang/.next/
+guangwang/out/
+guangwang/.env.local
+guangwang/*.zip
+guangwang/guangwang.zip
+
 # ===== OS =====
 .DS_Store
 Thumbs.db
@@ -102,6 +110,7 @@ pnpm-debug.log*
 *.aab
 *.exe
 *.dmg
+dist/
 
 # ===== Temp =====
 *.tmp
