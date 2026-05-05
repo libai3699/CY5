@@ -1,7 +1,6 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from 'vue';
+import { reactive } from 'vue';
 
-import { captchaApi } from '#/api';
 import { useAuthStore } from '#/store';
 
 defineOptions({ name: 'Login' });
@@ -12,20 +11,11 @@ const form = reactive({
   password: '',
   username: '',
 });
-const totpSecret = ref('');
-const totpUri = ref('');
-
-async function loadCaptchaSetup() {
-  const data = await captchaApi();
-  totpSecret.value = data.secret;
-  totpUri.value = data.otpauth;
-}
 
 async function submit() {
   await authStore.authLogin({ ...form });
 }
 
-onMounted(loadCaptchaSetup);
 </script>
 
 <template>
@@ -47,12 +37,6 @@ onMounted(loadCaptchaSetup);
         <input v-model="form.captcha" maxlength="6" />
       </label>
 
-      <div class="cy-totp-box">
-        <div>首次绑定密钥</div>
-        <strong>{{ totpSecret }}</strong>
-        <small>{{ totpUri }}</small>
-      </div>
-
       <button class="cy-login-button" type="button" :disabled="authStore.loginLoading" @click="submit">
         {{ authStore.loginLoading ? '登录中...' : '登录后台' }}
       </button>
@@ -63,7 +47,6 @@ onMounted(loadCaptchaSetup);
 <style scoped>
 .cy-login-page {
   display: flex;
-  min-height: 100vh;
   align-items: center;
   justify-content: center;
   background: #f8fafc;
@@ -109,28 +92,6 @@ onMounted(loadCaptchaSetup);
   border-radius: 6px;
   padding: 0 12px;
   outline: none;
-}
-
-.cy-totp-box {
-  margin-bottom: 16px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-  padding: 12px;
-  color: #475569;
-  font-size: 12px;
-}
-
-.cy-totp-box strong {
-  display: block;
-  margin: 6px 0;
-  color: #0f172a;
-  font-size: 14px;
-  letter-spacing: 1px;
-}
-
-.cy-totp-box small {
-  display: block;
-  overflow-wrap: anywhere;
 }
 
 .cy-login-button {
