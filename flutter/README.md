@@ -5,7 +5,7 @@ flutter build apk --release
 
 flutter create my_app
 flutter run
-flutter run -d chrome
+flutter run -d chrome --flavor vpn
 flutter run -d ios
 flutter run -d android
 flutter devices

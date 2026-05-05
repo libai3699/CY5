@@ -23,9 +23,6 @@ const String kMarkNoticeReadUrl =
 const String kMarkAllReadUrl = '$kApiBaseUrl/api/app/user/notices/read-all';
 const String kTrackEventUrl = '$kApiBaseUrl/api/public/track';
 
-/// App 版本号 — 与 pubspec.yaml 的 version 字段保持一致
-/// 只需在这里改一处，Drawer 底部版本号自动更新
-const String kAppVersion = '0.0.4';
+const String kAppVersion = '0.0.5';
 
-/// Flavor 标识，通过 --dart-define=FLAVOR=vpn/acc 注入
 const String kFlavor = String.fromEnvironment('FLAVOR', defaultValue: 'vpn');

@@ -54,8 +54,9 @@ export default function ContactSection({ lang }: { lang: Lang }) {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
-        const decrypted = await decryptSiteConfig(data.encrypted);
-        if (!cancelled) setConfig(decrypted);
+        // 暂时注释掉解密，直接使用返回的数据
+        // const decrypted = await decryptSiteConfig(data.encrypted);
+        if (!cancelled) setConfig(data);
       } catch {
         // 联系方式失败时不显示该区块。
       } finally {

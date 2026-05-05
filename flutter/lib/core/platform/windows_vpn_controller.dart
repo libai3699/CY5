@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
@@ -7,11 +8,12 @@ import '../../pages/vpn_home/models/vpn_node.dart';
 
 class WindowsVpnController {
   static Process? _v2rayProcess;
+  static void Function()? onProcessExit;
   static const int _localPort = 10808;
   static const int _localHttpPort = 10809;
 
   /// 启动 V2ray 代理
-  static Future<bool> start(VpnNode node) async {
+  static Future<bool> start(VpnNode node, {String? configJson}) async {
     if (!Platform.isWindows) return false;
 
     try {
@@ -24,8 +26,9 @@ class WindowsVpnController {
       }
 
       final configFile = File(p.join(v2rayDir.path, 'config.json'));
-      final configJson = _generateConfig(node);
-      await configFile.writeAsString(jsonEncode(configJson));
+      await configFile.writeAsString(
+        configJson ?? jsonEncode(_generateConfig(node)),
+      );
 
       String v2rayPath =
           p.join(Directory.current.path, 'bin', 'windows', 'v2ray.exe');
@@ -38,11 +41,18 @@ class WindowsVpnController {
         throw Exception('找不到 v2ray.exe');
       }
 
-      _v2rayProcess = await Process.start(
+      final process = await Process.start(
         v2rayPath,
         ['-config', configFile.path],
         runInShell: false,
       );
+      _v2rayProcess = process;
+      unawaited(process.exitCode.then((_) {
+        if (!identical(_v2rayProcess, process)) return;
+        _v2rayProcess = null;
+        _setSystemProxy(false, '');
+        onProcessExit?.call();
+      }));
 
       _setSystemProxy(true, '127.0.0.1:$_localHttpPort');
       return true;
