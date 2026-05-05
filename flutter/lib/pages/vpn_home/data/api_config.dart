@@ -1,5 +1,5 @@
-//const String kApiBaseUrl = 'https://vpnapi.wangwei.tech';
-const String kApiBaseUrl = 'http://192.168.70.54:8989';
+const String kApiBaseUrl = 'https://vpnapi.wangwei.tech';
+//const String kApiBaseUrl = 'http://192.168.70.54:8989';
 
 // ── 公开接口（无需登录/签名）──────────────────────────────────
 const String kDeviceRegisterUrl = '$kApiBaseUrl/api/public/device/register';
