@@ -1,33 +1,42 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
-
+import { onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
-
-import {
-  createConfig,
-  getConfigList,
-  updateConfig,
-  type AppConfig,
-} from '#/api/admin/configs';
+import { getConfigList, updateConfig, type AppConfig } from '#/api/admin/configs';
 
 const loading = ref(false);
 const list = ref<AppConfig[]>([]);
 const editingKey = ref('');
 const editingValue = ref('');
-const createOpen = ref(false);
-const createForm = reactive({
-  key_name: '',
-  label: '',
-  sort_order: 0,
-  value: '',
-});
+
+// 配置分组定义
+const groups = [
+  { label: '📥 下载链接', prefix: 'download_' },
+  { label: '📱 应用版本', prefix: 'app_' },
+  { label: '📞 联系方式', prefix: 'contact_' },
+  { label: '🔗 其他配置', prefix: '' },
+];
+
+function getGroup(keyName: string) {
+  for (const g of groups.slice(0, -1)) {
+    if (keyName.startsWith(g.prefix)) return g.label;
+  }
+  return groups[groups.length - 1]!.label;
+}
+
+function groupedList() {
+  const map: Record<string, AppConfig[]> = {};
+  for (const g of groups) map[g.label] = [];
+  for (const item of list.value) {
+    const label = getGroup(item.key_name);
+    map[label]!.push(item);
+  }
+  return groups.map((g) => ({ label: g.label, items: map[g.label]! })).filter((g) => g.items.length > 0);
+}
 
 async function load() {
   loading.value = true;
   try {
-    const all = (await getConfigList()) ?? [];
-    // 只展示联系方式配置（key_name 以 contact_ 开头）
-    list.value = all.filter((c) => c.key_name.startsWith('contact_'));
+    list.value = (await getConfigList()) ?? [];
   } finally {
     loading.value = false;
   }
@@ -45,88 +54,47 @@ async function saveEdit(row: AppConfig) {
   await load();
 }
 
-function openCreate() {
-  // 新增时预填 contact_ 前缀，提示管理员
-  Object.assign(createForm, { key_name: 'contact_', label: '', sort_order: 10, value: '' });
-  createOpen.value = true;
-}
-
-async function saveCreate() {
-  if (!createForm.key_name.startsWith('contact_')) {
-    ElMessage.warning('联系方式配置键必须以 contact_ 开头');
-    return;
-  }
-  await createConfig(createForm);
-  ElMessage.success('新增成功');
-  createOpen.value = false;
-  await load();
-}
-
 onMounted(load);
 </script>
 
 <template>
-  <div class="p-4">
-    <el-card v-loading="loading">
-      <template #header>
-        <div class="flex items-center justify-between">
-          <span class="text-base font-semibold">联系方式</span>
-          <el-button type="primary" @click="openCreate">新增联系方式</el-button>
-        </div>
-      </template>
-
-      <el-table :data="list" border stripe>
-        <el-table-column prop="label" label="名称" width="160" />
-        <el-table-column prop="key_name" label="配置键" width="200" />
-        <el-table-column label="值">
-          <template #default="{ row }">
-            <el-input
-              v-if="editingKey === row.key_name"
-              v-model="editingValue"
-              type="textarea"
-              :autosize="{ minRows: 1, maxRows: 4 }"
-              placeholder="请输入联系方式内容"
-            />
-            <span v-else :class="row.value ? 'text-gray-800' : 'text-gray-400'">
-              {{ row.value || '（未设置）' }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="140">
-          <template #default="{ row }">
-            <template v-if="editingKey === row.key_name">
-              <el-button size="small" type="primary" @click="saveEdit(row)">保存</el-button>
-              <el-button size="small" @click="editingKey = ''">取消</el-button>
+  <div class="p-4 space-y-4" v-loading="loading">
+    <template v-for="group in groupedList()" :key="group.label">
+      <el-card>
+        <template #header>
+          <span class="text-base font-semibold">{{ group.label }}</span>
+        </template>
+        <el-table :data="group.items" border stripe>
+          <el-table-column prop="label" label="名称" width="180" />
+          <el-table-column prop="key_name" label="配置键" width="220" />
+          <el-table-column label="值">
+            <template #default="{ row }">
+              <el-input
+                v-if="editingKey === row.key_name"
+                v-model="editingValue"
+                type="textarea"
+                :autosize="{ minRows: 1, maxRows: 4 }"
+                placeholder="请输入配置值"
+              />
+              <span v-else :class="row.value ? 'text-gray-800' : 'text-gray-400'">
+                {{ row.value || '（未设置）' }}
+              </span>
             </template>
-            <template v-else>
-              <el-button size="small" @click="startEdit(row)">编辑</el-button>
+          </el-table-column>
+          <el-table-column label="操作" width="140">
+            <template #default="{ row }">
+              <template v-if="editingKey === row.key_name">
+                <el-button size="small" type="primary" @click="saveEdit(row)">保存</el-button>
+                <el-button size="small" @click="editingKey = ''">取消</el-button>
+              </template>
+              <template v-else>
+                <el-button size="small" @click="startEdit(row)">编辑</el-button>
+              </template>
             </template>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-empty v-if="!loading && list.length === 0" description="暂无联系方式配置" />
-    </el-card>
-
-    <el-dialog v-model="createOpen" title="新增联系方式" width="480px">
-      <el-form label-position="top">
-        <el-form-item label="配置键（必须以 contact_ 开头）">
-          <el-input v-model="createForm.key_name" placeholder="例如 contact_whatsapp" />
-        </el-form-item>
-        <el-form-item label="显示名称">
-          <el-input v-model="createForm.label" placeholder="例如 WhatsApp" />
-        </el-form-item>
-        <el-form-item label="联系方式内容">
-          <el-input v-model="createForm.value" type="textarea" :rows="2" placeholder="账号、链接或号码" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="createForm.sort_order" :min="0" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createOpen = false">取消</el-button>
-        <el-button type="primary" @click="saveCreate">保存</el-button>
-      </template>
-    </el-dialog>
+          </el-table-column>
+        </el-table>
+      </el-card>
+    </template>
+    <el-empty v-if="!loading && list.length === 0" description="暂无配置" />
   </div>
 </template>
