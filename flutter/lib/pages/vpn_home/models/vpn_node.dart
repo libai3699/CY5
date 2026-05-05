@@ -6,6 +6,7 @@ class VpnNode {
     required this.protocol,
     required this.address,
     required this.rawUri,
+    this.latency,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class VpnNode {
   final String protocol;
   final String address;
   final String rawUri;
+  final int? latency; // 延迟（毫秒），null 表示未测速
 
   Map<String, dynamic> toJson() {
     return {
@@ -23,6 +25,7 @@ class VpnNode {
       'protocol': protocol,
       'address': address,
       'rawUri': rawUri,
+      'latency': latency,
     };
   }
 
@@ -34,6 +37,27 @@ class VpnNode {
       protocol: json['protocol']?.toString() ?? 'VMESS',
       address: json['address']?.toString() ?? '',
       rawUri: (json['rawUri'] ?? json['raw_uri'])?.toString() ?? '',
+      latency: json['latency'] as int?,
+    );
+  }
+
+  VpnNode copyWith({
+    String? id,
+    String? name,
+    String? region,
+    String? protocol,
+    String? address,
+    String? rawUri,
+    int? latency,
+  }) {
+    return VpnNode(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      region: region ?? this.region,
+      protocol: protocol ?? this.protocol,
+      address: address ?? this.address,
+      rawUri: rawUri ?? this.rawUri,
+      latency: latency ?? this.latency,
     );
   }
 }

@@ -18,6 +18,7 @@ import 'contact_page.dart';
 import 'data/auth_service.dart';
 import 'data/api_config.dart';
 import 'data/device_identity.dart';
+import 'data/node_speed_tester.dart';
 import 'data/remote_app_loader.dart' show RemoteAppLoader, TokenExpiredException;
 import 'data/remote_vpn_line_loader.dart';
 import 'login_devices_page.dart';
@@ -41,6 +42,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   final RemoteAppLoader _appLoader = const RemoteAppLoader();
   final DeviceIdentity _deviceIdentity = const DeviceIdentity();
   final AuthService _authService = const AuthService();
+  final NodeSpeedTester _speedTester = const NodeSpeedTester();
 
   List<VpnNode> _nodes = const [];
   VpnNode? _selectedNode;
@@ -285,16 +287,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
       _heartbeatFailCount++;
       print('[HEARTBEAT] failed (count: $_heartbeatFailCount): $e');
       
-      // 连续失败3次，认为VPN已断开，主动断开并提示用户
-      if (_heartbeatFailCount >= 3 && _isConnected) {
-        print('[HEARTBEAT] 连续失败3次，主动断开VPN');
-        await _disconnect();
-        if (mounted) {
-          setState(() {
-            _message = 'VPN连接已断开，请重新连接';
-          });
-        }
-      }
+      // 心跳失败不断开VPN，继续重试
+      // VPN连接状态由系统层面管理，心跳只用于统计使用时长
     } finally {
       client.close(force: true);
     }
@@ -323,10 +317,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
     setState(() { _isLoadingNodes = true; _message = null; });
     try {
       final nodes = await _lineLoader.load();
+      
+      // 测速并排序
+      print('[LOAD_NODES] 开始测速 ${nodes.length} 个节点');
+      final sortedNodes = await _speedTester.testAndSortNodes(nodes);
+      
       if (!mounted) return;
       setState(() {
-        _nodes = nodes;
-        _selectedNode = nodes.isNotEmpty ? nodes.first : null;
+        _nodes = sortedNodes;
+        _selectedNode = sortedNodes.isNotEmpty ? sortedNodes.first : null;
         _isLoadingNodes = false;
       });
     } catch (error) {
