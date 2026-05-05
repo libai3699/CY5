@@ -49,8 +49,32 @@ class NodeLabel extends StatelessWidget {
             ),
           ),
         ],
+        if (node.latency != null) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: _getLatencyColor(node.latency!).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              '${node.latency}ms',
+              style: TextStyle(
+                color: _getLatencyColor(node.latency!),
+                fontSize: fontSize - 2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ],
     );
+  }
+
+  Color _getLatencyColor(int latency) {
+    if (latency < 100) return const Color(0xFF10B981); // 绿色 - 快
+    if (latency < 200) return const Color(0xFFF59E0B); // 橙色 - 中等
+    return const Color(0xFFEF4444); // 红色 - 慢
   }
 }
 
