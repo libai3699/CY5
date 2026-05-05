@@ -36,7 +36,7 @@ const config: Config = {
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/$1',
       },
-      setupFilesAfterFramework: ['<rootDir>/jest.setup.ts'],
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
     },
   ],
 };
