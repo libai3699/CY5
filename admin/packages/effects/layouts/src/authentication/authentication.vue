@@ -5,7 +5,6 @@ import { computed } from 'vue';
 
 import { preferences, usePreferences } from '@vben/preferences';
 
-import { Copyright } from '../basic/copyright';
 import AuthenticationFormView from './form.vue';
 import SloganIcon from './icons/slogan.vue';
 import Toolbar from './toolbar.vue';
@@ -68,14 +67,6 @@ const logoSrc = computed(() => {
       class="min-h-full w-2/5 flex-1"
       data-side="left"
     >
-      <template v-if="copyright" #copyright>
-        <slot name="copyright">
-          <Copyright
-            v-if="preferences.copyright.enable"
-            v-bind="preferences.copyright"
-          />
-        </slot>
-      </template>
     </AuthenticationFormView>
 
     <slot name="logo">
@@ -121,14 +112,6 @@ const logoSrc = computed(() => {
         class="w-full rounded-3xl pb-20 shadow-float shadow-primary/5 md:w-2/3 md:bg-background lg:w-1/2 xl:w-[36%]"
         data-side="bottom"
       >
-        <template v-if="copyright" #copyright>
-          <slot name="copyright">
-            <Copyright
-              v-if="preferences.copyright.enable"
-              v-bind="preferences.copyright"
-            />
-          </slot>
-        </template>
       </AuthenticationFormView>
     </div>
 
@@ -138,14 +121,6 @@ const logoSrc = computed(() => {
       class="min-h-full w-2/5 flex-1"
       data-side="right"
     >
-      <template v-if="copyright" #copyright>
-        <slot name="copyright">
-          <Copyright
-            v-if="preferences.copyright.enable"
-            v-bind="preferences.copyright"
-          />
-        </slot>
-      </template>
     </AuthenticationFormView>
   </div>
 </template>
