@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../flavor_config.dart';
+
 class AppTopBar extends StatelessWidget {
   const AppTopBar({
     super.key,
@@ -23,10 +25,10 @@ class AppTopBar extends StatelessWidget {
             color: const Color(0xFF9F1239),
           ),
           const SizedBox(width: 2),
-          const Expanded(
+          Expanded(
             child: Text(
-              '9点9 VPN',
-              style: TextStyle(
+              FlavorConfig.appName,
+              style: const TextStyle(
                 color: Color(0xFF881337),
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
