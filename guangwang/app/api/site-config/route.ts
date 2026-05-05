@@ -28,11 +28,13 @@ export async function GET() {
     const json = await response.json();
     const config: Record<string, string> = json?.data ?? json ?? {};
 
+    const pick = (...keys: string[]) => keys.map((key) => config[key]).find(Boolean) ?? '';
+
     const plainConfig = {
-      vpn_apk:          config['download_vpn_apk']  ?? '',
-      acc_apk:          config['download_acc_apk']  ?? '',
-      vpn_version:      config['app_vpn_version']   ?? '',
-      acc_version:      config['app_acc_version']   ?? '',
+      vpn_apk:          pick('vpn_apk', 'download_vpn_apk', 'download_vpn_url', 'vpn_download_url'),
+      acc_apk:          pick('acc_apk', 'download_acc_apk', 'download_acc_url', 'acc_download_url'),
+      vpn_version:      pick('vpn_version', 'app_vpn_version', 'download_vpn_version'),
+      acc_version:      pick('acc_version', 'app_acc_version', 'download_acc_version'),
       contact_wechat:   config['contact_wechat']    ?? '',
       contact_telegram: config['contact_telegram']  ?? '',
       contact_qq:       config['contact_qq']        ?? '',

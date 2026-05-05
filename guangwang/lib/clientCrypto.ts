@@ -59,10 +59,10 @@ export async function decryptSiteConfig(encrypted: string): Promise<DownloadConf
   const config: BackendConfig = payload?.data ?? payload;
 
   return {
-    vpn_apk: config.download_vpn_apk ?? '',
-    acc_apk: config.download_acc_apk ?? '',
-    vpn_version: config.app_vpn_version ?? '',
-    acc_version: config.app_acc_version ?? '',
+    vpn_apk: config.vpn_apk ?? config.download_vpn_apk ?? '',
+    acc_apk: config.acc_apk ?? config.download_acc_apk ?? '',
+    vpn_version: config.vpn_version ?? config.app_vpn_version ?? '',
+    acc_version: config.acc_version ?? config.app_acc_version ?? '',
     contact_wechat: config.contact_wechat ?? '',
     contact_telegram: config.contact_telegram ?? '',
     contact_qq: config.contact_qq ?? '',
