@@ -3,6 +3,7 @@ import { baseRequestClient, requestClient } from '#/api/request';
 export namespace AuthApi {
   /** 登录接口参数 */
   export interface LoginParams {
+    captcha?: string;
     password?: string;
     username?: string;
   }
@@ -16,6 +17,15 @@ export namespace AuthApi {
     data: string;
     status: number;
   }
+
+  export interface CaptchaResult {
+    account: string;
+    issuer: string;
+    otpauth: string;
+    period: number;
+    secret: string;
+    type: string;
+  }
 }
 
 /**
@@ -23,6 +33,10 @@ export namespace AuthApi {
  */
 export async function loginApi(data: AuthApi.LoginParams) {
   return requestClient.post<AuthApi.LoginResult>('/auth/login', data);
+}
+
+export async function captchaApi() {
+  return requestClient.get<AuthApi.CaptchaResult>('/auth/captcha');
 }
 
 /**

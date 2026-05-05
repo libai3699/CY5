@@ -1,6 +1,15 @@
 package admin
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base32"
+	"encoding/binary"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
 	"cy5vpn/server/internal/config"
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
@@ -9,12 +18,68 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const (
+	adminUsername      = "yuexiameiren"
+	adminPassword      = "1"
+	adminCaptchaSecret = "JBSWY3DPEHPK3PXP"
+	adminCaptchaPeriod = int64(30)
+)
+
 type adminLoginReq struct {
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	Captcha  string `json:"captcha" binding:"required"`
 }
 
-// Login 后台管理员登录
+func adminCaptchaCode(t time.Time) string {
+	counter := uint64(t.Unix() / adminCaptchaPeriod)
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], counter)
+
+	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(adminCaptchaSecret)
+	if err != nil {
+		return ""
+	}
+	mac := hmac.New(sha1.New, secret)
+	mac.Write(buf[:])
+	sum := mac.Sum(nil)
+	offset := sum[len(sum)-1] & 0x0f
+	value := (uint32(sum[offset])&0x7f)<<24 |
+		(uint32(sum[offset+1])&0xff)<<16 |
+		(uint32(sum[offset+2])&0xff)<<8 |
+		(uint32(sum[offset+3]) & 0xff)
+
+	return fmt.Sprintf("%06d", value%1000000)
+}
+
+func validateAdminCaptcha(code string) bool {
+	code = strings.TrimSpace(code)
+	now := time.Now()
+	return code == adminCaptchaCode(now) ||
+		code == adminCaptchaCode(now.Add(-time.Duration(adminCaptchaPeriod)*time.Second))
+}
+
+func Captcha(c *gin.Context) {
+	issuer := "9.9 VPN Admin"
+	account := adminUsername
+	otpauth := fmt.Sprintf(
+		"otpauth://totp/%s:%s?secret=%s&issuer=%s&period=%d&digits=6",
+		url.QueryEscape(issuer),
+		url.QueryEscape(account),
+		adminCaptchaSecret,
+		url.QueryEscape(issuer),
+		adminCaptchaPeriod,
+	)
+	handler.OK(c, gin.H{
+		"account":  account,
+		"issuer":   issuer,
+		"otpauth":  otpauth,
+		"period":   adminCaptchaPeriod,
+		"secret":   adminCaptchaSecret,
+		"type":     "totp",
+	})
+}
+
 func Login(c *gin.Context) {
 	var req adminLoginReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -22,10 +87,14 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// 直接验证用户名和密码
-	if req.Username != "@pgin12345" || req.Password != "@pgin12345" {
+	if req.Username != adminUsername || req.Password != adminPassword {
 		writeAdminLog(c, req.Username, 0)
 		handler.Fail(c, 1002, "用户名或密码错误")
+		return
+	}
+	if !validateAdminCaptcha(req.Captcha) {
+		writeAdminLog(c, req.Username, 0)
+		handler.Fail(c, 1003, "验证码错误")
 		return
 	}
 
@@ -39,11 +108,10 @@ func Login(c *gin.Context) {
 	handler.OK(c, gin.H{"accessToken": token})
 }
 
-// UserInfo 返回后台当前登录用户信息，供 Vben 权限初始化使用。
 func UserInfo(c *gin.Context) {
 	username := c.GetString("admin_username")
 	if username == "" {
-		username = "@pgin12345"
+		username = adminUsername
 	}
 
 	handler.OK(c, gin.H{
@@ -58,12 +126,10 @@ func UserInfo(c *gin.Context) {
 	})
 }
 
-// AccessCodes 返回后台按钮级权限码，当前先放开管理端权限。
 func AccessCodes(c *gin.Context) {
 	handler.OK(c, []string{"CY_ADMIN"})
 }
 
-// Logout 兼容前端退出登录调用，JWT 无状态，客户端清 token 即可。
 func Logout(c *gin.Context) {
 	handler.OK(c, gin.H{"msg": "ok"})
 }

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { reactive, ref } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 
 import {
   ElButton,
@@ -11,6 +11,7 @@ import {
 } from 'element-plus';
 import 'element-plus/dist/index.css';
 
+import { captchaApi } from '#/api';
 import { useAuthStore } from '#/store';
 
 defineOptions({ name: 'Login' });
@@ -18,43 +19,42 @@ defineOptions({ name: 'Login' });
 const authStore = useAuthStore();
 
 const form = reactive({
-  password: 'admin123456',
-  username: 'admin',
+  captcha: '',
+  password: '',
+  username: '',
 });
 
-// 默认账号密码已填入，直接点登录即可
-
 const loading = ref(false);
+const totpSecret = ref('');
+const totpUri = ref('');
+
+async function loadCaptchaSetup() {
+  const data = await captchaApi();
+  totpSecret.value = data.secret;
+  totpUri.value = data.otpauth;
+}
 
 async function onSubmit() {
   loading.value = true;
   try {
-    await authStore.authLogin({
-      password: form.password,
-      username: form.username,
-    });
+    await authStore.authLogin({ ...form });
   } catch {
     ElMessage.error('登录失败');
   } finally {
     loading.value = false;
   }
 }
+
+onMounted(loadCaptchaSetup);
 </script>
 
 <template>
   <main class="cy-login-page">
-    <section class="cy-login-visual">
-      <div>
-        <h1>CY VPN Admin</h1>
-        <p>VPN service management</p>
-      </div>
-    </section>
-
     <section class="cy-login-panel">
       <ElCard class="cy-login-card" shadow="never">
         <div class="cy-login-title">
           <h2>后台登录</h2>
-          <p>账号：admin，密码：admin123456</p>
+          <p>请输入账号、密码和 Google Authenticator 动态验证码</p>
         </div>
 
         <ElForm :model="form" label-position="top" @submit.prevent>
@@ -62,13 +62,16 @@ async function onSubmit() {
             <ElInput v-model="form.username" size="large" />
           </ElFormItem>
           <ElFormItem label="密码">
-            <ElInput
-              v-model="form.password"
-              show-password
-              size="large"
-              type="password"
-            />
+            <ElInput v-model="form.password" show-password size="large" type="password" />
           </ElFormItem>
+          <ElFormItem label="Google 验证码">
+            <ElInput v-model="form.captcha" maxlength="6" size="large" />
+          </ElFormItem>
+          <div class="cy-totp-box">
+            <div>首次绑定密钥</div>
+            <strong>{{ totpSecret }}</strong>
+            <small>{{ totpUri }}</small>
+          </div>
           <ElButton
             class="cy-login-button"
             :loading="loading || authStore.loginLoading"
@@ -87,51 +90,16 @@ async function onSubmit() {
 
 <style scoped>
 .cy-login-page {
-  display: grid;
+  display: flex;
   width: 100vw;
-  min-width: 100vw;
-  height: 100vh;
   min-height: 100vh;
-  grid-template-columns: minmax(0, 1fr) 460px;
-  overflow: hidden;
-  background: #0f172a;
-}
-
-.cy-login-visual {
-  display: flex;
-  align-items: center;
-  padding: 64px;
-  color: #f8fafc;
-  background:
-    linear-gradient(135deg, rgb(15 23 42 / 92%), rgb(30 64 175 / 72%)),
-    url('/logo.png') center / cover no-repeat;
-}
-
-.cy-login-visual h1 {
-  margin: 0;
-  font-size: 44px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.cy-login-visual p {
-  margin: 16px 0 0;
-  color: #cbd5e1;
-  font-size: 18px;
-}
-
-.cy-login-panel {
-  display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
-  padding: 32px;
   background: #f8fafc;
 }
 
 .cy-login-card {
-  width: 100%;
-  max-width: 360px;
+  width: 360px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
 }
@@ -153,22 +121,29 @@ async function onSubmit() {
   font-size: 14px;
 }
 
-.cy-login-button {
-  width: 100%;
-  margin-top: 8px;
+.cy-totp-box {
+  margin-bottom: 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 12px;
+  color: #475569;
+  font-size: 12px;
 }
 
-@media (width <= 768px) {
-  .cy-login-page {
-    grid-template-columns: 1fr;
-  }
+.cy-totp-box strong {
+  display: block;
+  margin: 6px 0;
+  color: #0f172a;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
 
-  .cy-login-visual {
-    display: none;
-  }
+.cy-totp-box small {
+  display: block;
+  overflow-wrap: anywhere;
+}
 
-  .cy-login-panel {
-    padding: 24px;
-  }
+.cy-login-button {
+  width: 100%;
 }
 </style>
