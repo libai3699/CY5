@@ -78,6 +78,22 @@ guangwang/.env.local
 guangwang/*.zip
 guangwang/guangwang.zip
 
+# ===== Guangwang (Next.js) =====
+guangwang-react/node_modules/
+guangwang-react/.next/
+guangwang-react/out/
+guangguangwang-reactwang/.env.local
+guangwang-react/*.zip
+guangwang-react/guangwang-react.zip
+
+# ===== Guangwang (Next.js) =====
+gw/node_modules/
+gw/.next/
+gw/out/
+guanggwwang/.env.local
+gw/*.zip
+gw/guangwang-react.zip
+
 # ===== OS =====
 .DS_Store
 Thumbs.db
