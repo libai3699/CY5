@@ -603,7 +603,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => PurchasePage(
-                    userId: session.userId,
                     username: session.username,
                     token: session.token,
                   ),
@@ -620,7 +619,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PurchasePage(
-          userId: _session!.userId,
           username: _session!.username,
           token: _session!.token,
         ),
