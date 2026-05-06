@@ -58,6 +58,11 @@ async function handleSiteConfig(res) {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) throw new Error(`backend ${response.status}`);
     const json = await response.json();
+    const backendEncrypted = json?.encrypted ?? json?.data?.encrypted;
+    if (backendEncrypted) {
+      sendJson(res, 200, { encrypted: backendEncrypted });
+      return;
+    }
     const config = json?.data ?? json ?? {};
     const plainConfig = {
       vpn_apk: pick(config, ['vpn_apk', 'download_vpn_apk', 'download_vpn_url', 'vpn_download_url']),

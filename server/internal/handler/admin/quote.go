@@ -76,6 +76,14 @@ func UpdateQuote(c *gin.Context) {
 // DeleteQuote 删除语录
 func DeleteQuote(c *gin.Context) {
 	id := c.Param("id")
-	database.DB.Delete(&model.Quote{}, id)
+	result := database.DB.Delete(&model.Quote{}, id)
+	if result.Error != nil {
+		handler.Fail(c, 500, "删除失败")
+		return
+	}
+	if result.RowsAffected == 0 {
+		handler.Fail(c, 404, "语录不存在")
+		return
+	}
 	handler.OK(c, gin.H{"msg": "删除成功"})
 }

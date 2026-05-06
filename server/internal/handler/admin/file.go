@@ -132,7 +132,32 @@ func UploadPaymentImage(c *gin.Context) {
 		return
 	}
 
-	handler.OK(c, gin.H{"url": "/uploads/payment/" + fileName})
+	handler.OK(c, gin.H{"url": absoluteUploadURL(c, "/uploads/payment/" + fileName)})
+}
+
+func absoluteUploadURL(c *gin.Context, value string) string {
+	if value == "" || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return value
+	}
+	if !strings.HasPrefix(value, "/") {
+		value = "/" + value
+	}
+	proto := c.GetHeader("X-Forwarded-Proto")
+	if proto == "" {
+		if c.Request.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+	host := c.GetHeader("X-Forwarded-Host")
+	if host == "" {
+		host = c.Request.Host
+	}
+	if proto == "http" && !strings.HasPrefix(host, "localhost") && !strings.HasPrefix(host, "127.0.0.1") {
+		proto = "https"
+	}
+	return proto + "://" + host + value
 }
 
 func DeleteFile(c *gin.Context) {

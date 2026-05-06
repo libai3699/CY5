@@ -4,9 +4,10 @@ import 'contact_page.dart';
 import 'data/auth_service.dart';
 
 class AuthPage extends StatefulWidget {
-  const AuthPage({super.key, required this.config});
+  const AuthPage({super.key, this.config, this.onLoginSuccess});
 
-  final Map<String, String> config;
+  final Map<String, String>? config;
+  final void Function(AuthSession)? onLoginSuccess;
 
   @override
   State<AuthPage> createState() => _AuthPageState();
@@ -60,7 +61,14 @@ class _AuthPageState extends State<AuthPage> {
           ? await _auth.register(username: username, password: password)
           : await _auth.login(username: username, password: password);
       if (!mounted) return;
-      Navigator.of(context).pop(session);
+      
+      // 如果有回调，调用回调；否则返回session
+      if (widget.onLoginSuccess != null) {
+        widget.onLoginSuccess!(session);
+        Navigator.of(context).pop();
+      } else {
+        Navigator.of(context).pop(session);
+      }
     } catch (error) {
       final text = error.toString();
       setState(() => _message = text);
