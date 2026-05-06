@@ -336,8 +336,9 @@ function App() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
-        const nextConfig = data.encrypted
-          ? await decryptSiteConfig(data.encrypted)
+        const encrypted = data.encrypted ?? data.data?.encrypted;
+        const nextConfig = encrypted
+          ? await decryptSiteConfig(encrypted)
           : normalizeSiteConfig(data);
         if (!cancelled) setConfig(nextConfig);
       } catch (err) {

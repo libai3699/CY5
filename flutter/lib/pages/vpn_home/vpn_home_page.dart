@@ -591,8 +591,40 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   void _openPurchasePage() {
+    // 检查是否已登录
+    if (_session == null || _session!.token.isEmpty) {
+      // 未登录，先跳转到登录页面
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AuthPage(
+            onLoginSuccess: (session) {
+              // 登录成功后，更新session并打开购买页面
+              setState(() { _session = session; });
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => PurchasePage(
+                    userId: session.userId,
+                    username: session.username,
+                    token: session.token,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+    
+    // 已登录，直接打开购买页面
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const PurchasePage()),
+      MaterialPageRoute<void>(
+        builder: (_) => PurchasePage(
+          userId: _session!.userId,
+          username: _session!.username,
+          token: _session!.token,
+        ),
+      ),
     );
   }
 

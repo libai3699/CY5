@@ -12,6 +12,9 @@ import (
 func ListPaymentConfigs(c *gin.Context) {
 	var configs []model.PaymentConfig
 	database.DB.Order("sort_order asc").Find(&configs)
+	for i := range configs {
+		configs[i].QRCode = absoluteUploadURL(c, configs[i].QRCode)
+	}
 	handler.OK(c, configs)
 }
 
@@ -48,6 +51,7 @@ func CreatePaymentConfig(c *gin.Context) {
 		Remark:    req.Remark,
 	}
 	database.DB.Create(&config)
+	config.QRCode = absoluteUploadURL(c, config.QRCode)
 	handler.OK(c, config)
 }
 
