@@ -2,4 +2,5 @@
 go run ./cmd/main.go
 go mod tidy
 
-$env:GOOS="linux"; $env:GOARCH="amd64"; $env:CGO_ENABLED="0"; go build -o app ./cmd/main.go   //打包 放上宝塔 运行 ./app
+$env:GOOS="linux"; $env:GOARCH="amd64"; $env:CGO_ENABLED="0"; go build -o app ./cmd/main.go   //打包 放上宝塔 
+运行 ./.sh
