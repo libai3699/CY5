@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
@@ -34,6 +35,7 @@ var fixedFileNames = map[string]string{
 }
 
 const maxFileSize = 500 << 20
+const maxImageSize = 5 << 20
 
 func ListFiles(c *gin.Context) {
 	keys := []string{"download_vpn_apk", "download_acc_apk", "download_vpn_exe", "download_acc_exe"}
@@ -98,6 +100,39 @@ func UploadFile(c *gin.Context) {
 		Update("value", url)
 
 	handler.OK(c, gin.H{"key": configKey, "url": url})
+}
+
+func UploadPaymentImage(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImageSize)
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		handler.Fail(c, 400, "image read failed: "+err.Error())
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".webp", ".gif":
+	default:
+		handler.Fail(c, 400, "only .jpg, .jpeg, .png, .webp or .gif images are allowed")
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Join("uploads", "payment"), 0755); err != nil {
+		handler.Fail(c, 500, "create upload directory failed")
+		return
+	}
+
+	fileName := fmt.Sprintf("payment_%d%s", time.Now().UnixNano(), ext)
+	savePath := filepath.Join("uploads", "payment", fileName)
+	if err := c.SaveUploadedFile(header, savePath); err != nil {
+		handler.Fail(c, 500, "image save failed: "+err.Error())
+		return
+	}
+
+	handler.OK(c, gin.H{"url": "/uploads/payment/" + fileName})
 }
 
 func DeleteFile(c *gin.Context) {

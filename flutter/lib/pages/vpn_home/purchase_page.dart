@@ -7,13 +7,14 @@ import 'components/common_page_top_bar.dart';
 import 'contact_page.dart';
 import 'data/api_config.dart';
 import 'data/device_identity.dart';
-import 'payment_page.dart';
+import 'payment_page_v3.dart';
 
 class PurchasePage extends StatefulWidget {
-  const PurchasePage({super.key, this.userId, this.username});
+  const PurchasePage({super.key, this.userId, this.username, this.token});
 
   final int? userId;
   final String? username;
+  final String? token;
 
   @override
   State<PurchasePage> createState() => _PurchasePageState();
@@ -349,10 +350,13 @@ class _PurchasePageState extends State<PurchasePage> {
     _track('click_buy', planName: selected.name, planPrice: selected.price, cycle: _cycle.label);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => PaymentPage(
+        builder: (_) => PaymentPageV3(
           planName: selected.name,
           totalPrice: total,
           cycle: _cycle.label,
+          planId: selected.id,
+          billingCycle: _cycle.value,
+          token: widget.token,
         ),
       ),
     );
@@ -405,15 +409,16 @@ class _CycleTabs extends StatelessWidget {
 }
 
 enum _BillingCycle {
-  month('月付', 1),
-  quarter('季付', 3),
-  halfYear('半年付', 6),
-  year('年付', 12);
+  month('月付', 1, 'month'),
+  quarter('季付', 3, 'quarter'),
+  halfYear('半年付', 6, 'half_year'),
+  year('年付', 12, 'year');
 
-  const _BillingCycle(this.label, this.months);
+  const _BillingCycle(this.label, this.months, this.value);
 
   final String label;
   final int months;
+  final String value;
 }
 
 class _Plan {

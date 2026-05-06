@@ -6,9 +6,11 @@ import (
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func ListConfigs(c *gin.Context) {
+	noStore(c)
 	var configs []model.AppConfig
 	database.DB.Order("sort_order asc").Find(&configs)
 	handler.OK(c, configs)
@@ -22,6 +24,7 @@ type createConfigReq struct {
 }
 
 func CreateConfig(c *gin.Context) {
+	noStore(c)
 	var req createConfigReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handler.Fail(c, 400, "参数错误: "+err.Error())
@@ -46,6 +49,7 @@ type updateConfigReq struct {
 }
 
 func UpdateConfig(c *gin.Context) {
+	noStore(c)
 	key := c.Param("key")
 
 	var req updateConfigReq
@@ -54,20 +58,38 @@ func UpdateConfig(c *gin.Context) {
 		return
 	}
 
-	// 用 map 强制更新，避免 GORM 对空字符串零值跳过更新的问题
-	result := database.DB.Model(&model.AppConfig{}).
-		Where("key_name = ?", key).
-		Updates(map[string]interface{}{"value": req.Value})
-	if result.Error != nil {
-		handler.Fail(c, 500, "保存失败: "+result.Error.Error())
+	var cfg model.AppConfig
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("key_name = ?", key).First(&cfg).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&model.AppConfig{}).
+			Where("id = ?", cfg.ID).
+			UpdateColumn("value", req.Value).Error; err != nil {
+			return err
+		}
+
+		return tx.Where("id = ?", cfg.ID).First(&cfg).Error
+	})
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			handler.Fail(c, 404, "配置项不存在")
+			return
+		}
+		handler.Fail(c, 500, "保存失败: "+err.Error())
 		return
 	}
-	if result.RowsAffected == 0 {
-		handler.Fail(c, 404, "配置项不存在")
+	if cfg.Value != req.Value {
+		handler.Fail(c, 500, "保存校验失败，请重试")
 		return
 	}
 
-	var cfg model.AppConfig
-	database.DB.Where("key_name = ?", key).First(&cfg)
 	handler.OK(c, gin.H{"msg": "更新成功", "config": cfg})
+}
+
+func noStore(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
 }
