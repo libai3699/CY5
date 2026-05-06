@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { Delete, Plus } from '@element-plus/icons-vue';
+import { uploadPaymentImage } from '#/api/admin/files';
 import { getPaymentConfigList, createPaymentConfig, updatePaymentConfig, deletePaymentConfig, type PaymentConfig } from '#/api/admin/payments';
 
 const loading = ref(false);
@@ -9,6 +11,7 @@ const dialogVisible = ref(false);
 const isEdit = ref(false);
 const editId = ref(0);
 const form = reactive({ type: '', label: '', address: '', qr_code: '', is_active: 1 as number, sort_order: 0, remark: '' });
+const uploading = ref(false);
 
 async function load() {
   loading.value = true;
@@ -25,6 +28,33 @@ function openEdit(row: PaymentConfig) {
   isEdit.value = true; editId.value = row.id;
   Object.assign(form, { type: row.type, label: row.label, address: row.address, qr_code: row.qr_code, is_active: row.is_active, sort_order: row.sort_order, remark: row.remark });
   dialogVisible.value = true;
+}
+
+async function handleUpload(file: File) {
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('只能上传图片文件');
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.error('图片大小不能超过 5MB');
+    return;
+  }
+
+  uploading.value = true;
+  try {
+    const data = new FormData();
+    data.append('file', file);
+    const result = await uploadPaymentImage(data);
+    form.qr_code = result.url;
+    ElMessage.success('上传成功');
+  } finally {
+    uploading.value = false;
+  }
+}
+
+function handleRemoveQrCode() {
+  form.qr_code = '';
 }
 
 async function handleSubmit() {
@@ -79,13 +109,49 @@ onMounted(load);
           <el-select v-model="form.type" placeholder="请选择" style="width:100%" :disabled="isEdit">
             <el-option label="USDT (TRC20)" value="usdt_trc20" />
             <el-option label="USDT (BEP20)" value="usdt_bep20" />
+            <el-option label="USDT (ERC20)" value="usdt_erc20" />
             <el-option label="微信支付" value="wechat" />
             <el-option label="支付宝" value="alipay" />
           </el-select>
         </el-form-item>
         <el-form-item label="显示名称" required><el-input v-model="form.label" /></el-form-item>
         <el-form-item label="地址/账号"><el-input v-model="form.address" placeholder="USDT地址或收款账号" /></el-form-item>
-        <el-form-item label="二维码URL"><el-input v-model="form.qr_code" placeholder="二维码图片链接" /></el-form-item>
+        <el-form-item label="二维码">
+          <div class="flex flex-col gap-2">
+            <div v-if="form.qr_code" class="relative inline-block">
+              <el-image
+                :src="form.qr_code"
+                style="width: 200px; height: 200px"
+                fit="contain"
+                :preview-src-list="[form.qr_code]"
+              />
+              <el-button
+                type="danger"
+                size="small"
+                circle
+                :icon="Delete"
+                class="absolute top-0 right-0"
+                @click="handleRemoveQrCode"
+              />
+            </div>
+            <el-upload
+              :show-file-list="false"
+              :before-upload="(file) => { handleUpload(file); return false; }"
+              accept="image/*"
+              :disabled="uploading"
+            >
+              <el-button :loading="uploading" :icon="Plus">
+                {{ form.qr_code ? '更换二维码' : '上传二维码' }}
+              </el-button>
+            </el-upload>
+            <div class="text-xs text-gray-500">
+              支持 JPG、PNG、WebP、GIF 格式，大小不超过 5MB
+            </div>
+            <el-input v-model="form.qr_code" placeholder="输入二维码图片URL">
+              <template #prepend>图片URL</template>
+            </el-input>
+          </div>
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.is_active"><el-radio :value="1">启用</el-radio><el-radio :value="0">禁用</el-radio></el-radio-group>
         </el-form-item>
@@ -94,7 +160,7 @@ onMounted(load);
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <el-button type="primary" @click="handleSubmit" :loading="uploading">确定</el-button>
       </template>
     </el-dialog>
   </div>

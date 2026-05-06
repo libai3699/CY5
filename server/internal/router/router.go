@@ -132,6 +132,7 @@ func Setup(r *gin.Engine) {
 			// 文件管理
 			authGroup.GET("/files", admin.ListFiles)
 			authGroup.POST("/files/upload", admin.UploadFile)
+			authGroup.POST("/files/payment-image", admin.UploadPaymentImage)
 			authGroup.DELETE("/files/:key", admin.DeleteFile)
 
 			// 埋点统计

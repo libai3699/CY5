@@ -48,8 +48,21 @@ export const copy = {
       accName: '9.9 加速器',
       downloadNow: '立即下载',
       unavailable: '暂未开放',
+      mainlandNoticeTitle: '大陆用户下载提示',
+      mainlandNoticeText: '鉴于国内相关政策与网络环境，建议大陆用户优先下载“9.9 加速器”。它和 9.9 VPN 除了名称不同，其他功能与使用方式保持一致。',
       note: '如下载或安装遇到问题，请联系客服获取最新安装方式。',
       error: '当前下载暂时不可用，请稍后重试或联系客服',
+    },
+    payments: {
+      badge: '支付方式',
+      titleA: '支持',
+      titleB: '多种付款方式',
+      subtitle: '购买套餐时可选择 USDT、微信支付或支付宝。确认支付页会展示对应收款地址和收款二维码，请按页面显示的金额完成付款。',
+      items: [
+        ['USDT', '支持 TRC20、BEP20、ERC20 网络。'],
+        ['微信支付', '支持微信收款账号和二维码付款。'],
+        ['支付宝', '支持支付宝账号和二维码付款。'],
+      ],
     },
     contact: {
       badge: '客服支持',
@@ -113,8 +126,21 @@ export const copy = {
       accName: '9.9 Accelerator',
       downloadNow: 'Download now',
       unavailable: 'Unavailable',
+      mainlandNoticeTitle: 'Mainland China download notice',
+      mainlandNoticeText: 'Due to local policy and network conditions, users in Mainland China are advised to download 9.9 Accelerator first. It has the same features and usage as 9.9 VPN, with only the name changed.',
       note: 'If download or installation fails, contact support for the latest install method.',
       error: 'Downloads are temporarily unavailable. Please try again later or contact support.',
+    },
+    payments: {
+      badge: 'Payment methods',
+      titleA: 'Multiple',
+      titleB: 'payment options',
+      subtitle: 'When buying a plan, you can pay with USDT, WeChat Pay, or Alipay. The payment page shows the matching receiving address and QR code.',
+      items: [
+        ['USDT', 'TRC20, BEP20, and ERC20 networks are supported.'],
+        ['WeChat Pay', 'Pay using the displayed WeChat account and QR code.'],
+        ['Alipay', 'Pay using the displayed Alipay account and QR code.'],
+      ],
     },
     contact: {
       badge: 'Support',

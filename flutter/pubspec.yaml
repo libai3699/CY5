@@ -66,6 +66,8 @@ flutter:
     - assets/images/contact/telegram.png
     - assets/images/contact/gmail.png
     - assets/images/contact/wechat.png
+    - assets/images/contact/alipay.png
+    - assets/images/contact/USDT.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

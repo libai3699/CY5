@@ -278,6 +278,7 @@ h2 span {
 .feature-card,
 .download-card,
 .contact-card,
+.payment-card,
 .error-box,
 .note {
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -431,7 +432,8 @@ h2 {
 
 .feature-grid,
 .download-grid,
-.contact-grid {
+.contact-grid,
+.payment-grid {
   display: grid;
   gap: 18px;
   width: 100%;
@@ -444,7 +446,8 @@ h2 {
 
 .feature-card,
 .download-card,
-.contact-card {
+.contact-card,
+.payment-card {
   width: 100%;
   min-width: 0;
   border-radius: 24px;
@@ -557,6 +560,67 @@ h2 {
 
 .download-section {
   background: linear-gradient(180deg, transparent, rgba(124, 58, 237, 0.08), transparent);
+}
+
+.download-alert {
+  display: grid;
+  gap: 8px;
+  max-width: 780px;
+  margin: 0 auto 22px;
+  border: 1px solid rgba(250, 204, 21, 0.46);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(250, 204, 21, 0.18), rgba(239, 68, 68, 0.12));
+  box-shadow: 0 22px 64px rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+  padding: 18px 20px;
+}
+
+.download-alert strong {
+  color: #fff7ed;
+  font-size: 18px;
+}
+
+.download-alert span {
+  color: #fef3c7;
+  line-height: 1.7;
+}
+
+.payment-section {
+  background: linear-gradient(180deg, transparent, rgba(34, 197, 94, 0.07), transparent);
+}
+
+.payment-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.payment-card {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+}
+
+.payment-icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 10px;
+}
+
+.payment-icon img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+
+.payment-card p {
+  color: #94a3b8;
+  line-height: 1.75;
 }
 
 .download-grid {
@@ -829,6 +893,7 @@ footer {
   .section-heading,
   .feature-grid,
   .download-grid,
+  .payment-grid,
   .contact-grid,
   .note,
   .error-box {
@@ -840,6 +905,7 @@ footer {
   .feature-grid,
   .guide-grid,
   .download-grid,
+  .payment-grid,
   .contact-grid {
     grid-template-columns: 1fr;
     justify-items: stretch;
@@ -1003,6 +1069,7 @@ footer {
   .feature-grid,
   .guide-grid,
   .download-grid,
+  .payment-grid,
   .contact-grid {
     grid-template-columns: 1fr;
     justify-items: stretch;
@@ -1028,6 +1095,7 @@ footer {
   .section-heading,
   .feature-grid,
   .download-grid,
+  .payment-grid,
   .contact-grid,
   .note,
   .error-box {
@@ -1039,6 +1107,7 @@ footer {
   .feature-card,
   .guide-card,
   .download-card,
+  .payment-card,
   .contact-card,
   .skeleton-card {
     max-width: 100%;

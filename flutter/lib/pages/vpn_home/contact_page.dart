@@ -144,13 +144,13 @@ class _ContactPageState extends State<ContactPage> {
   Widget _buildIcon(String key) {
     final asset = _assetFor(key);
     if (asset == null) {
-      return const Icon(Icons.mark_chat_unread_rounded, color: Color(0xFFE11D48));
+      return const Icon(Icons.mark_chat_unread_rounded, color: Color(0xFFE11D48), size: 32);
     }
 
     return Image.asset(
       asset,
-      width: 24,
-      height: 24,
+      width: 34,
+      height: 34,
       fit: BoxFit.contain,
     );
   }

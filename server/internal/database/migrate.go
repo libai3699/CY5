@@ -151,15 +151,19 @@ func seedQuotes() {
 // seedPaymentConfigs 初始化支付配置数据（幂等）
 func seedPaymentConfigs() {
 	configs := []model.PaymentConfig{
-		{Type: "usdt_trc20", Label: "USDT (TRC20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 1, Remark: "请填写TRC20网络的USDT收款地址"},
-		{Type: "usdt_bep20", Label: "USDT (BEP20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 2, Remark: "请填写BEP20网络的USDT收款地址"},
-		{Type: "wechat", Label: "微信支付", Address: "", QRCode: "", IsActive: 1, SortOrder: 3, Remark: "请上传微信收款二维码"},
-		{Type: "alipay", Label: "支付宝", Address: "", QRCode: "", IsActive: 1, SortOrder: 4, Remark: "请上传支付宝收款二维码"},
+		{Type: "usdt_trc20", Label: "USDT (TRC20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 1, Remark: ""},
+		{Type: "usdt_bep20", Label: "USDT (BEP20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 2, Remark: ""},
+		{Type: "usdt_erc20", Label: "USDT (ERC20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 3, Remark: ""},
+		{Type: "wechat", Label: "微信支付", Address: "", QRCode: "", IsActive: 1, SortOrder: 4, Remark: "请上传微信收款二维码"},
+		{Type: "alipay", Label: "支付宝", Address: "", QRCode: "", IsActive: 1, SortOrder: 5, Remark: "请上传支付宝收款二维码"},
 	}
 
 	for _, cfg := range configs {
 		// 只在 type 不存在时插入，已存在则跳过
 		DB.Where(model.PaymentConfig{Type: cfg.Type}).FirstOrCreate(&cfg)
 	}
+	DB.Model(&model.PaymentConfig{}).
+		Where("type IN ?", []string{"usdt_trc20", "usdt_bep20", "usdt_erc20"}).
+		Update("remark", "")
 	log.Println("[migrate] 支付配置初始数据写入完成")
 }

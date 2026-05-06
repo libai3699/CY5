@@ -348,18 +348,19 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
     try {
       final nextNodes = await _lineLoader.load();
-      if (!_sameNodes(_nodes, nextNodes)) {
+      final sortedNodes = await _speedTester.testAndSortNodes(nextNodes);
+      if (!_sameNodes(_nodes, sortedNodes)) {
         final currentId = _selectedNode?.id;
         VpnNode? nextSelected;
-        for (final node in nextNodes) {
+        for (final node in sortedNodes) {
           if (node.id == currentId) {
             nextSelected = node;
             break;
           }
         }
         setState(() {
-          _nodes = nextNodes;
-          _selectedNode = nextSelected ?? (nextNodes.isNotEmpty ? nextNodes.first : null);
+          _nodes = sortedNodes;
+          _selectedNode = nextSelected ?? (sortedNodes.isNotEmpty ? sortedNodes.first : null);
           _message = '线路已刷新';
         });
       }
@@ -624,6 +625,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
     );
   }
 
+  String get _displayTrafficRemaining {
+    final text = _appStatus.trafficRemaining.trim();
+    final isFreeTrial = _appStatus.planLevel == '免费体验';
+    if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
+      return '无限流量';
+    }
+    return _appStatus.trafficRemaining;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -640,7 +650,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         onRefreshLines: _refreshLinesFromDrawer,
         planLevel: _appStatus.planLevel,
         remainingTimeText: _appStatus.remainingTimeText,
-        trafficRemaining: _appStatus.trafficRemaining,
+        trafficRemaining: _displayTrafficRemaining,
         username: _session?.username,
       ),
       endDrawer: SizedBox(
@@ -721,13 +731,14 @@ class _VpnHomePageState extends State<VpnHomePage> {
                   onRefresh: _isConnected ? () async {} : () async {
                     setState(() => _quoteKey++);
                     await _loadAppData();
+                    await _loadNodes();
                   },
                   child: VpnControlPanel(
                     status: _status,
                     node: _selectedNode,
                     message: _message,
                     remainingTimeText: _appStatus.remainingTimeText,
-                    trafficRemaining: _appStatus.trafficRemaining,
+                    trafficRemaining: _displayTrafficRemaining,
                     isLoadingNodes: _isLoadingNodes,
                     isBusy: _isConnecting,
                     hasNodes: _nodes.isNotEmpty,

@@ -196,6 +196,10 @@ function DownloadSection({ lang, config, error, loading }: { lang: Lang; config:
           <p>{t.subtitle}</p>
         </div>
         {error && <div className="error-box">{t.error}</div>}
+        <div className="download-alert reveal">
+          <strong>{t.mainlandNoticeTitle}</strong>
+          <span>{t.mainlandNoticeText}</span>
+        </div>
         <div className="download-grid">
           {loading ? (
             <>
@@ -210,6 +214,33 @@ function DownloadSection({ lang, config, error, loading }: { lang: Lang; config:
           )}
         </div>
         <p className="note reveal">{t.note}</p>
+      </div>
+    </section>
+  );
+}
+
+function PaymentMethodsSection({ lang }: { lang: Lang }) {
+  const t = copy[lang].payments;
+  const icons = ['/contact-icons/USDT.png', '/contact-icons/wechat.png', '/contact-icons/alipay.png'];
+  return (
+    <section id="payments" className="section payment-section">
+      <div className="section-inner">
+        <div className="section-heading reveal">
+          <div className="pill">{t.badge}</div>
+          <h2>{t.titleA}<span>{t.titleB}</span></h2>
+          <p>{t.subtitle}</p>
+        </div>
+        <div className="payment-grid">
+          {t.items.map(([title, text], index) => (
+            <article className="payment-card reveal" style={{ animationDelay: `${index * 90}ms` }} key={title}>
+              <div className="payment-icon">
+                <img src={icons[index]} alt="" />
+              </div>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -329,6 +360,7 @@ function App() {
       <Features lang={lang} />
       <GuideSection lang={lang} />
       <DownloadSection lang={lang} config={config} error={error} loading={loading} />
+      <PaymentMethodsSection lang={lang} />
       <ContactSection lang={lang} config={config} loading={loading} />
       <footer><Logo size={32} /><span>{copy[lang].footer}</span></footer>
       <BackToTop lang={lang} />
