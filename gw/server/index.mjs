@@ -66,6 +66,7 @@ async function handleSiteConfig(res) {
       acc_version: pick(config, ['acc_version', 'app_acc_version', 'download_acc_version']),
       contact_wechat: config.contact_wechat ?? '',
       contact_telegram: config.contact_telegram ?? '',
+      telegram_subscription_url: pick(config, ['telegram_subscription_url', 'subscription_url']),
       contact_qq: config.contact_qq ?? '',
       contact_email: config.contact_email ?? '',
     };

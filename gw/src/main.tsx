@@ -13,7 +13,17 @@ function Logo({ size = 42 }: { size?: number }) {
 }
 
 function Navbar({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const t = copy[lang].nav;
+  const links = [
+    { href: '#features', label: t.features },
+    { href: '#guide', label: t.guide },
+    { href: '#download', label: t.download },
+    { href: '#contact', label: t.contact },
+  ];
+
+  const closeMenu = () => setMenuOpen(false);
+
   return (
     <header className="nav">
       <a className="brand" href="#top" aria-label="9.9 VPN">
@@ -21,13 +31,40 @@ function Navbar({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }
         <span>9.9 VPN</span>
       </a>
       <nav>
-        <a href="#features">{t.features}</a>
-        <a href="#download">{t.download}</a>
-        <a href="#contact">{t.contact}</a>
+        {links.map((link) => (
+          <a key={link.href} href={link.href} onClick={closeMenu}>{link.label}</a>
+        ))}
         <button type="button" className="ghost-btn" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
           {t.lang}
         </button>
       </nav>
+      <button
+        type="button"
+        className="menu-btn"
+        onClick={() => setMenuOpen((open) => !open)}
+        aria-label={menuOpen ? t.closeMenu : t.openMenu}
+        aria-expanded={menuOpen}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+      {menuOpen && (
+        <div className="mobile-menu">
+          {links.map((link) => (
+            <a key={link.href} href={link.href} onClick={closeMenu}>{link.label}</a>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setLang(lang === 'zh' ? 'en' : 'zh');
+              closeMenu();
+            }}
+          >
+            {t.lang}
+          </button>
+        </div>
+      )}
     </header>
   );
 }
@@ -103,6 +140,34 @@ function Features({ lang }: { lang: Lang }) {
   );
 }
 
+function GuideSection({ lang }: { lang: Lang }) {
+  const t = copy[lang].guide;
+  return (
+    <section id="guide" className="section guide-section">
+      <div className="section-inner">
+        <div className="section-heading reveal">
+          <div className="pill blue">{t.badge}</div>
+          <h2>{t.titleA}<span>{t.titleB}</span></h2>
+          <p>{t.subtitle}</p>
+        </div>
+        <div className="guide-grid">
+          {t.steps.map(([title, text], index) => (
+            <article className="guide-card reveal" style={{ animationDelay: `${index * 90}ms` }} key={title}>
+              <div className="guide-index">{index + 1}</div>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </article>
+          ))}
+        </div>
+        <div className="guide-tip reveal">
+          <strong>{t.tipTitle}</strong>
+          <span>{t.tipText}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DownloadCard({ name, version, url, text, unavailable }: { name: string; version: string; url: string; text: string; unavailable: string }) {
   const disabled = !url;
   return (
@@ -156,10 +221,11 @@ function ContactSection({ lang, config, loading }: { lang: Lang; config: Downloa
   const items = useMemo(() => {
     if (!config) return [];
     return [
-      ['contact_wechat', t.wechat, config.contact_wechat, '#'],
-      ['contact_telegram', t.telegram, config.contact_telegram, config.contact_telegram.startsWith('http') ? config.contact_telegram : `https://t.me/${config.contact_telegram.replace('@', '')}`],
-      ['contact_qq', t.qq, config.contact_qq, `tencent://message/?uin=${config.contact_qq}`],
-      ['contact_email', t.email, config.contact_email, `mailto:${config.contact_email}`],
+      ['contact_wechat', t.wechat, config.contact_wechat, '#', '/contact-icons/wechat.png'],
+      ['contact_telegram', t.telegram, config.contact_telegram, config.contact_telegram.startsWith('http') ? config.contact_telegram : `https://t.me/${config.contact_telegram.replace('@', '')}`, '/contact-icons/telegram.png'],
+      ['telegram_subscription_url', t.telegramSubscription, config.telegram_subscription_url, config.telegram_subscription_url, '/contact-icons/telegram.png'],
+      ['contact_qq', t.qq, config.contact_qq, `tencent://message/?uin=${config.contact_qq}`, '/contact-icons/qq.png'],
+      ['contact_email', t.email, config.contact_email, `mailto:${config.contact_email}`, '/contact-icons/gmail.png'],
     ].filter((item) => String(item[2]).trim());
   }, [config, t]);
 
@@ -174,9 +240,11 @@ function ContactSection({ lang, config, loading }: { lang: Lang; config: Downloa
           <p>{t.subtitle}</p>
         </div>
         <div className="contact-grid">
-          {items.map(([key, label, value, href]) => (
+          {items.map(([key, label, value, href, icon]) => (
             <article className="contact-card reveal" key={key}>
-              <div className="contact-icon">{String(label).slice(0, 2).toUpperCase()}</div>
+              <div className="contact-icon">
+                {icon ? <img src={String(icon)} alt="" /> : String(label).slice(0, 2).toUpperCase()}
+              </div>
               <small>{label}</small>
               <a href={href} target={String(href).startsWith('http') ? '_blank' : undefined} rel="noreferrer">{value}</a>
               <button
@@ -259,6 +327,7 @@ function App() {
       <Navbar lang={lang} setLang={setLang} />
       <Hero lang={lang} />
       <Features lang={lang} />
+      <GuideSection lang={lang} />
       <DownloadSection lang={lang} config={config} error={error} loading={loading} />
       <ContactSection lang={lang} config={config} loading={loading} />
       <footer><Logo size={32} /><span>{copy[lang].footer}</span></footer>

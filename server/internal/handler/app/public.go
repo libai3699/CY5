@@ -1,11 +1,13 @@
 package app
 
 import (
+	"encoding/json"
 	"strconv"
 	"time"
 
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
+	"cy5vpn/server/internal/middleware"
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +21,19 @@ func GetPublicConfig(c *gin.Context) {
 	for _, cfg := range configs {
 		result[cfg.KeyName] = cfg.Value
 	}
-	handler.OK(c, result)
+
+	payload, err := json.Marshal(result)
+	if err != nil {
+		handler.Fail(c, 500, "配置序列化失败")
+		return
+	}
+	encrypted, err := middleware.AESEncrypt(payload)
+	if err != nil {
+		handler.Fail(c, 500, "配置加密失败")
+		return
+	}
+
+	handler.OK(c, gin.H{"encrypted": encrypted})
 }
 
 func GetPublicAppStatus(c *gin.Context) {

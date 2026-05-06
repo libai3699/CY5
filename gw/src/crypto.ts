@@ -51,6 +51,7 @@ export function normalizeSiteConfig(payload: any): DownloadConfig {
     acc_version: config.acc_version ?? config.app_acc_version ?? '',
     contact_wechat: config.contact_wechat ?? '',
     contact_telegram: config.contact_telegram ?? '',
+    telegram_subscription_url: config.telegram_subscription_url ?? config.subscription_url ?? '',
     contact_qq: config.contact_qq ?? '',
     contact_email: config.contact_email ?? '',
   };

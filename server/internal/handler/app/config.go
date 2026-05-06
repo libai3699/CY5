@@ -24,7 +24,7 @@ func GetConfig(c *gin.Context) {
 // GetContactConfig 只返回联系方式配置（key_name 以 contact_ 开头）
 func GetContactConfig(c *gin.Context) {
 	var configs []model.AppConfig
-	database.DB.Where("key_name LIKE ?", "contact_%").Order("sort_order asc").Find(&configs)
+	database.DB.Where("key_name LIKE ? OR key_name = ?", "contact_%", "subscription_url").Order("sort_order asc").Find(&configs)
 
 	type contactItem struct {
 		Key   string `json:"key"`

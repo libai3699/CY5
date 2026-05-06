@@ -5,6 +5,7 @@ export interface DownloadConfig {
   acc_version: string;
   contact_wechat: string;
   contact_telegram: string;
+  telegram_subscription_url: string;
   contact_qq: string;
   contact_email: string;
 }

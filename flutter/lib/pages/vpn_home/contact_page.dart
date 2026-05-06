@@ -95,7 +95,7 @@ class _ContactPageState extends State<ContactPage> {
           ),
           child: Row(
             children: [
-              Icon(_iconFor(item.key), color: const Color(0xFFE11D48)),
+              _buildIcon(item.key),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -141,12 +141,28 @@ class _ContactPageState extends State<ContactPage> {
     );
   }
 
-  IconData _iconFor(String key) {
-    if (key.contains('wechat')) return Icons.mark_chat_unread_rounded;
-    if (key.contains('telegram')) return Icons.send_rounded;
-    if (key.contains('email')) return Icons.email_rounded;
-    if (key.contains('qq')) return Icons.chat_rounded;
-    return Icons.contact_support_rounded;
+  Widget _buildIcon(String key) {
+    final asset = _assetFor(key);
+    if (asset == null) {
+      return const Icon(Icons.mark_chat_unread_rounded, color: Color(0xFFE11D48));
+    }
+
+    return Image.asset(
+      asset,
+      width: 24,
+      height: 24,
+      fit: BoxFit.contain,
+    );
+  }
+
+  String? _assetFor(String key) {
+    if (key.contains('telegram') || key.contains('subscription')) {
+      return 'assets/images/contact/telegram.png';
+    }
+    if (key.contains('wechat')) return 'assets/images/contact/wechat.png';
+    if (key.contains('email')) return 'assets/images/contact/gmail.png';
+    if (key.contains('qq')) return 'assets/images/contact/qq.png';
+    return null;
   }
 }
 
