@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -12,16 +13,52 @@ import 'api_config.dart';
 class DeviceIdentity {
   const DeviceIdentity();
 
-  /// 获取或生成本地设备 ID（内部 hex，用于接口通信）
+  /// 获取稳定的设备 ID
+  /// - Android: androidId（卸载重装不变，恢复出厂设置才变）
+  /// - iOS: identifierForVendor（同一开发者账号下所有 App 共享）
+  /// - 其他/获取失败: 回退到本地文件持久化的随机 ID
   Future<String> getOrCreateDeviceId() async {
+    // 优先读取本地缓存（避免每次重复调用系统 API）
     final file = await _deviceFile();
     if (await file.exists()) {
       final value = (await file.readAsString()).trim();
       if (value.isNotEmpty) return value;
     }
+
+    // 尝试获取系统级稳定 ID
+    String? stableId = await _getSystemDeviceId();
+    if (stableId != null && stableId.isNotEmpty) {
+      await file.writeAsString(stableId);
+      return stableId;
+    }
+
+    // 降级方案：生成随机 ID 并持久化到本地文件
     final id = _newDeviceId();
     await file.writeAsString(id);
     return id;
+  }
+
+  /// 从系统 API 获取设备标识
+  Future<String?> _getSystemDeviceId() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        final id = androidInfo.id?.trim();
+        if (id != null && id.isNotEmpty && id != 'unknown') {
+          return 'a_$id';
+        }
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        final id = iosInfo.identifierForVendor?.trim();
+        if (id != null && id.isNotEmpty) {
+          return 'i_$id';
+        }
+      }
+    } catch (e) {
+      debugPrint('[DEVICE] getSystemDeviceId error: $e');
+    }
+    return null;
   }
 
   /// 获取服务端分配的 7 位展示 ID（本地缓存）
@@ -39,8 +76,7 @@ class DeviceIdentity {
     final deviceId = await getOrCreateDeviceId();
     debugPrint('[DEVICE] register device_id: $deviceId');
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       final request = await client
           .postUrl(Uri.parse(kDeviceRegisterUrl))
@@ -53,9 +89,11 @@ class DeviceIdentity {
         'os_version': Platform.operatingSystemVersion,
         'app_version': '1.0.0',
       }));
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response =
+          await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
-      debugPrint('[DEVICE] register status: ${response.statusCode}, body: $body');
+      debugPrint(
+          '[DEVICE] register status: ${response.statusCode}, body: $body');
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(body);
@@ -65,7 +103,8 @@ class DeviceIdentity {
           return displayId;
         }
       } else {
-        debugPrint('[DEVICE] register failed with status ${response.statusCode}');
+        debugPrint(
+            '[DEVICE] register failed with status ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('[DEVICE] register error: $e');

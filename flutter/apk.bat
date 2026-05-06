@@ -9,8 +9,27 @@ echo.
 
 cd /d "%~dp0flutter"
 
+echo [准备] 正在 clean...
+call fvm flutter clean
+if %errorlevel% neq 0 (
+    echo.
+    echo [错误] flutter clean 失败！
+    pause
+    exit /b 1
+)
+
+echo [准备] 正在 pub get...
+call fvm flutter pub get
+if %errorlevel% neq 0 (
+    echo.
+    echo [错误] pub get 失败！
+    pause
+    exit /b 1
+)
+
+echo.
 echo [1/2] 正在打包 9点9 VPN...
-call flutter build apk --release --flavor vpn --dart-define=FLAVOR=vpn
+call fvm flutter build apk --release --flavor vpn --dart-define=FLAVOR=vpn
 if %errorlevel% neq 0 (
     echo.
     echo [错误] VPN 打包失败！
@@ -21,7 +40,7 @@ echo [1/2] VPN 打包完成 ✓
 echo.
 
 echo [2/2] 正在打包 9点9 加速器...
-call flutter build apk --release --flavor acc --dart-define=FLAVOR=acc
+call fvm flutter build apk --release --flavor acc --dart-define=FLAVOR=acc
 if %errorlevel% neq 0 (
     echo.
     echo [错误] 加速器打包失败！
@@ -35,17 +54,11 @@ echo ========================================
 echo  打包完成！输出文件：
 echo ========================================
 echo.
-echo  VPN:    flutter\build\app\outputs\flutter-apk\app-vpn-release.apk
-echo  加速器: flutter\build\app\outputs\flutter-apk\app-acc-release.apk
+echo VPN:
+echo flutter\build\app\outputs\flutter-apk\app-vpn-release.apk
+echo.
+echo 加速器:
+echo flutter\build\app\outputs\flutter-apk\app-acc-release.apk
 echo.
 
-:: 复制到根目录 dist 文件夹方便取用
-if not exist "..\dist" mkdir "..\dist"
-copy "build\app\outputs\flutter-apk\app-vpn-release.apk" "..\dist\9点9VPN.apk" >nul
-copy "build\app\outputs\flutter-apk\app-acc-release.apk" "..\dist\9点9加速器.apk" >nul
-
-echo  已复制到根目录 dist\ 文件夹：
-echo  dist\9点9VPN.apk
-echo  dist\9点9加速器.apk
-echo.
 pause
