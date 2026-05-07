@@ -83,7 +83,9 @@ android {
 
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig localProperties.getProperty('release.storeFile') != null
+                ? signingConfigs.release
+                : signingConfigs.debug
             // 开启混淆和资源压缩
             minifyEnabled true
             shrinkResources true
