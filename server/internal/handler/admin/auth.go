@@ -6,7 +6,6 @@ import (
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -16,12 +15,14 @@ import (
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
+// ⚠️ 安全提醒：
+// 1. 部署前务必使用强随机 ADMIN_PASSWORD_HASH 和 ADMIN_CAPTCHA_SECRET
+// 2. 同步修改 .env 中的 ADMIN_JWT_SECRET 和 APP_SECRET 为全新随机字符串
+// 3. 修改后重新部署，并清除所有旧 session
 const (
-	adminUsername      = "yuexiameiren"
-	adminPassword      = "1"
-	adminCaptchaSecret = "JBSWY3DPEHPK3PXP"
 	adminCaptchaPeriod = int64(30)
 )
 
@@ -36,7 +37,7 @@ func adminCaptchaCode(t time.Time) string {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], counter)
 
-	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(adminCaptchaSecret)
+	secret, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(config.App.AdminCaptchaSecret)
 	if err != nil {
 		return ""
 	}
@@ -59,24 +60,14 @@ func validateAdminCaptcha(code string) bool {
 		code == adminCaptchaCode(now.Add(-time.Duration(adminCaptchaPeriod)*time.Second))
 }
 
+// Captcha 仅返回基础配置信息，不再暴露 secret、otpauth 或 account
+// 管理员需通过安全渠道自行绑定 Google Authenticator
 func Captcha(c *gin.Context) {
-	issuer := "9.9 VPN Admin"
-	account := adminUsername
-	otpauth := fmt.Sprintf(
-		"otpauth://totp/%s:%s?secret=%s&issuer=%s&period=%d&digits=6",
-		url.QueryEscape(issuer),
-		url.QueryEscape(account),
-		adminCaptchaSecret,
-		url.QueryEscape(issuer),
-		adminCaptchaPeriod,
-	)
 	handler.OK(c, gin.H{
-		"account":  account,
-		"issuer":   issuer,
-		"otpauth":  otpauth,
-		"period":   adminCaptchaPeriod,
-		"secret":   adminCaptchaSecret,
-		"type":     "totp",
+		"issuer": "9.9 VPN Admin",
+		"period": adminCaptchaPeriod,
+		"digits": 6,
+		"type":   "totp",
 	})
 }
 
@@ -87,7 +78,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	if req.Username != adminUsername || req.Password != adminPassword {
+	if req.Username != config.App.AdminUsername ||
+		bcrypt.CompareHashAndPassword([]byte(config.App.AdminPasswordHash), []byte(req.Password)) != nil {
 		writeAdminLog(c, req.Username, 0)
 		handler.Fail(c, 1002, "用户名或密码错误")
 		return
@@ -111,7 +103,7 @@ func Login(c *gin.Context) {
 func UserInfo(c *gin.Context) {
 	username := c.GetString("admin_username")
 	if username == "" {
-		username = adminUsername
+		username = config.App.AdminUsername
 	}
 
 	handler.OK(c, gin.H{

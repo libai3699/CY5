@@ -20,6 +20,8 @@ class _AuthPageState extends State<AuthPage> {
   bool _loading = false;
   bool _obscurePassword = true;
   String? _message;
+  String? _usernameError;
+  String? _passwordError;
 
   @override
   void dispose() {
@@ -33,7 +35,11 @@ class _AuthPageState extends State<AuthPage> {
     final password = _password.text;
 
     if (username.isEmpty || password.isEmpty) {
-      setState(() => _message = '请填写账号和密码');
+      setState(() {
+        _message = null;
+        _usernameError = username.isEmpty ? '请填写账号' : null;
+        _passwordError = password.isEmpty ? '请填写密码' : null;
+      });
       return;
     }
 
@@ -42,11 +48,19 @@ class _AuthPageState extends State<AuthPage> {
           RegExp(r'[A-Za-z]').hasMatch(username) &&
           RegExp(r'\d').hasMatch(username);
       if (!validUsername) {
-        setState(() => _message = '账号至少6位，且必须同时包含字母和数字');
+        setState(() {
+          _message = null;
+          _usernameError = '账号至少6位，且必须同时包含字母和数字';
+          _passwordError = null;
+        });
         return;
       }
       if (password.length < 6) {
-        setState(() => _message = '密码至少6位');
+        setState(() {
+          _message = null;
+          _usernameError = null;
+          _passwordError = '密码至少6位';
+        });
         return;
       }
     }
@@ -54,6 +68,8 @@ class _AuthPageState extends State<AuthPage> {
     setState(() {
       _loading = true;
       _message = null;
+      _usernameError = null;
+      _passwordError = null;
     });
 
     try {
@@ -71,7 +87,21 @@ class _AuthPageState extends State<AuthPage> {
       }
     } catch (error) {
       final text = error.toString();
-      setState(() => _message = text);
+      setState(() {
+        if (text.contains('用户名') || text.contains('账号') || text.contains('1001') || text.contains('1002')) {
+          _usernameError = text;
+          _passwordError = null;
+          _message = null;
+        } else if (text.contains('密码')) {
+          _usernameError = null;
+          _passwordError = text;
+          _message = null;
+        } else {
+          _usernameError = null;
+          _passwordError = null;
+          _message = text;
+        }
+      });
       // 超出注册限制时跳转客服页面
       if (text.contains('1004') || text.contains('客服') || text.contains('3 个')) {
         if (mounted) _openContact();
@@ -123,11 +153,15 @@ class _AuthPageState extends State<AuthPage> {
                 controller: _username,
                 keyboardType: TextInputType.text,
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: '账号',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
-                  border: OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
+                  border: const OutlineInputBorder(),
+                  errorText: _usernameError,
                 ),
+                onChanged: (_) {
+                  if (_usernameError != null) setState(() => _usernameError = null);
+                },
               ),
               const SizedBox(height: 16),
               // 密码输入框（带小眼睛）
@@ -140,6 +174,7 @@ class _AuthPageState extends State<AuthPage> {
                   labelText: '密码',
                   prefixIcon: const Icon(Icons.lock_outline_rounded),
                   border: const OutlineInputBorder(),
+                  errorText: _passwordError,
                   suffixIcon: IconButton(
                     onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                     icon: Icon(
@@ -150,6 +185,9 @@ class _AuthPageState extends State<AuthPage> {
                     color: const Color(0xFF9F1239),
                   ),
                 ),
+                onChanged: (_) {
+                  if (_passwordError != null) setState(() => _passwordError = null);
+                },
               ),
               // 错误提示
               if (_message != null) ...[

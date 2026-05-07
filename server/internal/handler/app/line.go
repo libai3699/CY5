@@ -17,6 +17,31 @@ func GetDefaultLine(c *gin.Context) {
 	handler.OK(c, line)
 }
 
+type publicLine struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Region      string `json:"region"`
+	Protocol    string `json:"protocol"`
+	Address     string `json:"address"`
+	Description string `json:"description"`
+}
+
+func GetPublicDefaultLine(c *gin.Context) {
+	line, ok := findDefaultLine()
+	if !ok {
+		handler.Fail(c, 404, "暂无可用线路")
+		return
+	}
+	handler.OK(c, publicLine{
+		ID:          line.ID,
+		Name:        line.Name,
+		Region:      line.Region,
+		Protocol:    line.Protocol,
+		Address:     line.Address,
+		Description: line.Description,
+	})
+}
+
 func GetUserLine(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 

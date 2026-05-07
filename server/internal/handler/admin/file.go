@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -76,6 +77,10 @@ func UploadFile(c *gin.Context) {
 		handler.Fail(c, 400, "only .apk or .exe files are allowed")
 		return
 	}
+	if !validBinaryHeader(file, ext) {
+		handler.Fail(c, 400, "file content does not match extension")
+		return
+	}
 
 	fileName := fixedFileNames[fileKey]
 	if filepath.Ext(fileName) != ext {
@@ -119,6 +124,10 @@ func UploadPaymentImage(c *gin.Context) {
 		handler.Fail(c, 400, "only .jpg, .jpeg, .png, .webp or .gif images are allowed")
 		return
 	}
+	if !validImageHeader(file, ext) {
+		handler.Fail(c, 400, "image content does not match extension")
+		return
+	}
 
 	if err := os.MkdirAll(filepath.Join("uploads", "payment"), 0755); err != nil {
 		handler.Fail(c, 500, "create upload directory failed")
@@ -158,6 +167,46 @@ func absoluteUploadURL(c *gin.Context, value string) string {
 		proto = "https"
 	}
 	return proto + "://" + host + value
+}
+
+func validBinaryHeader(file multipartFile, ext string) bool {
+	header := readHeader(file)
+	switch ext {
+	case ".apk":
+		return len(header) >= 4 && bytes.Equal(header[:4], []byte{'P', 'K', 3, 4})
+	case ".exe":
+		return len(header) >= 2 && bytes.Equal(header[:2], []byte{'M', 'Z'})
+	default:
+		return false
+	}
+}
+
+func validImageHeader(file multipartFile, ext string) bool {
+	header := readHeader(file)
+	switch ext {
+	case ".jpg", ".jpeg":
+		return len(header) >= 3 && bytes.Equal(header[:3], []byte{0xff, 0xd8, 0xff})
+	case ".png":
+		return len(header) >= 8 && bytes.Equal(header[:8], []byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+	case ".gif":
+		return len(header) >= 6 && (bytes.Equal(header[:6], []byte("GIF87a")) || bytes.Equal(header[:6], []byte("GIF89a")))
+	case ".webp":
+		return len(header) >= 12 && bytes.Equal(header[:4], []byte("RIFF")) && bytes.Equal(header[8:12], []byte("WEBP"))
+	default:
+		return false
+	}
+}
+
+type multipartFile interface {
+	Read([]byte) (int, error)
+	Seek(int64, int) (int64, error)
+}
+
+func readHeader(file multipartFile) []byte {
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	file.Seek(0, 0)
+	return buf[:n]
 }
 
 func DeleteFile(c *gin.Context) {

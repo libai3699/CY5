@@ -69,9 +69,21 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            def storeFilePath = localProperties.getProperty('release.storeFile')
+            if (storeFilePath != null) {
+                storeFile file(storeFilePath)
+                storePassword localProperties.getProperty('release.storePassword')
+                keyAlias localProperties.getProperty('release.keyAlias')
+                keyPassword localProperties.getProperty('release.keyPassword')
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             // 开启混淆和资源压缩
             minifyEnabled true
             shrinkResources true

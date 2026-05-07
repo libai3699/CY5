@@ -19,7 +19,9 @@ func GetPublicConfig(c *gin.Context) {
 
 	result := make(map[string]string)
 	for _, cfg := range configs {
-		result[cfg.KeyName] = cfg.Value
+		if publicConfigKeys[cfg.KeyName] {
+			result[cfg.KeyName] = cfg.Value
+		}
 	}
 
 	payload, err := json.Marshal(result)

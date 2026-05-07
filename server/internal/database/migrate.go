@@ -3,8 +3,8 @@ package database
 import (
 	"log"
 
+	"cy5vpn/server/internal/config"
 	"cy5vpn/server/internal/model"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // Migrate 自动建表
@@ -47,19 +47,13 @@ func seedAdmin() {
 		return
 	}
 
-	// 默认密码 admin123456
-	hash, err := bcrypt.GenerateFromPassword([]byte("admin123456"), 12)
-	if err != nil {
-		log.Fatalf("[migrate] 生成管理员密码失败: %v", err)
-	}
-
 	admin := model.Admin{
-		Username: "admin",
-		Password: string(hash),
+		Username: config.App.AdminUsername,
+		Password: config.App.AdminPasswordHash,
 		Status:   1,
 	}
 	DB.Create(&admin)
-	log.Println("[migrate] 管理员账号初始化完成 admin/admin123456")
+	log.Println("[migrate] 管理员账号初始化完成")
 }
 
 // seedPlans 初始化套餐数据（幂等）
@@ -95,8 +89,8 @@ func seedLines() {
 		Name:        "默认线路",
 		Region:      "Auto",
 		Protocol:    "SUBSCRIPTION",
-		Address:     "dash.xn--cp3a08l.com",
-		RawURI:      "https://dash.xn--cp3a08l.com/api/v1/pq/f2d013d8cfe32512bc9d23f13592a5a0",
+		Address:     "example.invalid",
+		RawURI:      "",
 		SortOrder:   1,
 		IsDefault:   1,
 		IsActive:    1,

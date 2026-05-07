@@ -11,6 +11,7 @@ import (
 
 type AdminClaims struct {
 	Username string `json:"username"`
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -33,6 +34,22 @@ func AdminAuthRequired() gin.HandlerFunc {
 		}
 
 		c.Set("admin_username", claims.Username)
+		c.Set("admin_role", claims.Role)
+		c.Next()
+	}
+}
+
+func AdminRequireRole(roles ...string) gin.HandlerFunc {
+	allowed := map[string]bool{}
+	for _, role := range roles {
+		allowed[role] = true
+	}
+	return func(c *gin.Context) {
+		role := c.GetString("admin_role")
+		if !allowed[role] {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": 403, "message": "权限不足"})
+			return
+		}
 		c.Next()
 	}
 }

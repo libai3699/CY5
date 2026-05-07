@@ -13,14 +13,14 @@
 服务端：
 
 ```bash
-APP_SECRET=cy5vpn_app_secret_32bytes_2026xK9
+APP_SECRET=<same-random-secret-as-backend>
 PORT=3000
 ```
 
 前端构建时：
 
 ```bash
-VITE_APP_SECRET=cy5vpn_app_secret_32bytes_2026xK9
+VITE_APP_SECRET=<same-random-secret-as-backend>
 VITE_SITE_CONFIG_ENDPOINT=/api/site-config
 ```
 

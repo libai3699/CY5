@@ -305,6 +305,15 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                           fontSize: 10,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '付款时请备注好登录账号，方便到账审核',
+                        style: TextStyle(
+                          color: Color(0xFFE11D48),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -738,6 +747,15 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                     fontSize: 11,
                   ),
                 ),
+                const SizedBox(height: 4),
+                const Text(
+                  '付款时请备注好登录账号，方便到账审核',
+                  style: TextStyle(
+                    color: Color(0xFFE11D48),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ],
             ),
           ),
@@ -890,6 +908,15 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                   style: TextStyle(
                     color: const Color(0xFF9F1239).withOpacity(0.7),
                     fontSize: 11,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '付款时请备注好登录账号，方便到账审核',
+                  style: TextStyle(
+                    color: Color(0xFFE11D48),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
