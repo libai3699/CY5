@@ -18,11 +18,12 @@ func GenerateUserToken(userID uint64, deviceID string) (string, error) {
 	return token.SignedString([]byte(App.JWTSecret))
 }
 
-// GenerateAdminToken 生成后台管理员 JWT（15天）
+// GenerateAdminToken 生成后台管理员 JWT（2小时）
 func GenerateAdminToken(username string) (string, error) {
 	claims := jwt.MapClaims{
 		"username": username,
-		"exp":      time.Now().Add(15 * 24 * time.Hour).Unix(),
+		"role":     App.AdminRole,
+		"exp":      time.Now().Add(2 * time.Hour).Unix(),
 		"iat":      time.Now().Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

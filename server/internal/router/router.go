@@ -5,6 +5,7 @@ import (
 	"cy5vpn/server/internal/handler/app"
 	"cy5vpn/server/internal/middleware"
 	"cy5vpn/server/internal/ws"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,7 +20,7 @@ func Setup(r *gin.Engine) {
 	{
 		publicGroup.GET("/config", app.GetPublicConfig)
 		publicGroup.GET("/status", app.GetPublicAppStatus)
-		publicGroup.GET("/lines/default", app.GetDefaultLine)
+		publicGroup.GET("/lines/default", app.GetPublicDefaultLine)
 		publicGroup.GET("/notices", app.GetNotices)
 		publicGroup.GET("/plans", app.GetPlans)
 		publicGroup.GET("/quote", app.GetRandomQuote)
@@ -27,15 +28,15 @@ func Setup(r *gin.Engine) {
 		publicGroup.GET("/contact", app.GetContactConfig)
 		publicGroup.GET("/user/notices", middleware.AuthRequired(), app.GetUserNotices)
 		publicGroup.GET("/user/status", middleware.AuthRequired(), app.GetUserStatus)
-		publicGroup.POST("/user/heartbeat", middleware.AuthRequired(), app.UserHeartbeat)
+		publicGroup.POST("/user/heartbeat", middleware.IPRateLimit("public_user_heartbeat", 30, time.Minute), middleware.AuthRequired(), app.UserHeartbeat)
 		publicGroup.GET("/user/devices", middleware.AuthRequired(), app.ListLoginDevices)
 		publicGroup.DELETE("/user/devices/:id", middleware.AuthRequired(), app.RemoveLoginDevice)
 		publicGroup.POST("/user/logout", middleware.AuthRequired(), app.LogoutCurrentDevice)
 		publicGroup.GET("/ws/notices", ws.Notices.ServeNoticeSocket)
-		publicGroup.POST("/device/register", app.DeviceRegister)
-		publicGroup.POST("/auth/register", app.Register)
-		publicGroup.POST("/auth/login", app.Login)
-		publicGroup.POST("/track", app.TrackEvent)
+		publicGroup.POST("/device/register", middleware.IPRateLimit("public_device_register", 20, time.Minute), app.DeviceRegister)
+		publicGroup.POST("/auth/register", middleware.IPRateLimit("public_auth_register", 10, time.Minute), app.Register)
+		publicGroup.POST("/auth/login", middleware.IPRateLimit("public_auth_login", 10, time.Minute), app.Login)
+		publicGroup.POST("/track", middleware.IPRateLimit("public_track", 60, time.Minute), app.TrackEvent)
 	}
 
 	// ── 前台 API（Flutter 调用）──────────────────────────────────
@@ -77,7 +78,7 @@ func Setup(r *gin.Engine) {
 	{
 		// 登录不加密（Admin 用 HTTPS 即可）
 		adminGroup.GET("/auth/captcha", admin.Captcha)
-		adminGroup.POST("/auth/login", admin.Login)
+		adminGroup.POST("/auth/login", middleware.IPRateLimit("admin_auth_login", 5, time.Minute), admin.Login)
 		adminGroup.POST("/auth/logout", admin.Logout)
 
 		// 需要后台 JWT 的接口
@@ -90,11 +91,11 @@ func Setup(r *gin.Engine) {
 
 			// 用户管理
 			authGroup.GET("/users", admin.ListUsers)
-			authGroup.POST("/users", admin.CreateUser)
+			authGroup.POST("/users", middleware.AdminRequireRole("super_admin"), admin.CreateUser)
 			authGroup.GET("/users/:id", admin.GetUser)
-			authGroup.PUT("/users/:id", admin.UpdateUser)
-			authGroup.DELETE("/users/:id", admin.DeleteUser)
-			authGroup.POST("/users/:id/add-duration", admin.AddUserDuration)
+			authGroup.PUT("/users/:id", middleware.AdminRequireRole("super_admin"), admin.UpdateUser)
+			authGroup.DELETE("/users/:id", middleware.AdminRequireRole("super_admin"), admin.DeleteUser)
+			authGroup.POST("/users/:id/add-duration", middleware.AdminRequireRole("super_admin"), admin.AddUserDuration)
 			authGroup.GET("/duration-logs", admin.ListDurationLogs)
 
 			// 设备管理
@@ -103,37 +104,37 @@ func Setup(r *gin.Engine) {
 
 			// 套餐管理
 			authGroup.GET("/plans", admin.ListPlans)
-			authGroup.POST("/plans", admin.CreatePlan)
-			authGroup.PUT("/plans/:id", admin.UpdatePlan)
-			authGroup.DELETE("/plans/:id", admin.DeletePlan)
+			authGroup.POST("/plans", middleware.AdminRequireRole("super_admin"), admin.CreatePlan)
+			authGroup.PUT("/plans/:id", middleware.AdminRequireRole("super_admin"), admin.UpdatePlan)
+			authGroup.DELETE("/plans/:id", middleware.AdminRequireRole("super_admin"), admin.DeletePlan)
 
 			// 订单管理
 			authGroup.GET("/orders", admin.ListOrders)
-			authGroup.POST("/orders", admin.CreateOrder)
+			authGroup.POST("/orders", middleware.AdminRequireRole("super_admin"), admin.CreateOrder)
 
 			// 配置管理
 			authGroup.GET("/configs", admin.ListConfigs)
-			authGroup.POST("/configs", admin.CreateConfig)
-			authGroup.PUT("/configs/:key", admin.UpdateConfig)
+			authGroup.POST("/configs", middleware.AdminRequireRole("super_admin"), admin.CreateConfig)
+			authGroup.PUT("/configs/:key", middleware.AdminRequireRole("super_admin"), admin.UpdateConfig)
 
 			// 线路管理
 			authGroup.GET("/lines", admin.ListLines)
-			authGroup.POST("/lines", admin.CreateLine)
-			authGroup.PUT("/lines/:id", admin.UpdateLine)
-			authGroup.DELETE("/lines/:id", admin.DeleteLine)
-			authGroup.POST("/users/assign-line", admin.AssignUserLine)
+			authGroup.POST("/lines", middleware.AdminRequireRole("super_admin"), admin.CreateLine)
+			authGroup.PUT("/lines/:id", middleware.AdminRequireRole("super_admin"), admin.UpdateLine)
+			authGroup.DELETE("/lines/:id", middleware.AdminRequireRole("super_admin"), admin.DeleteLine)
+			authGroup.POST("/users/assign-line", middleware.AdminRequireRole("super_admin"), admin.AssignUserLine)
 
 			// 通知管理
 			authGroup.GET("/notices", admin.ListNotices)
-			authGroup.POST("/notices", admin.CreateNotice)
-			authGroup.PUT("/notices/:id", admin.UpdateNotice)
-			authGroup.DELETE("/notices/:id", admin.DeleteNotice)
+			authGroup.POST("/notices", middleware.AdminRequireRole("super_admin"), admin.CreateNotice)
+			authGroup.PUT("/notices/:id", middleware.AdminRequireRole("super_admin"), admin.UpdateNotice)
+			authGroup.DELETE("/notices/:id", middleware.AdminRequireRole("super_admin"), admin.DeleteNotice)
 
 			// 文件管理
 			authGroup.GET("/files", admin.ListFiles)
-			authGroup.POST("/files/upload", admin.UploadFile)
-			authGroup.POST("/files/payment-image", admin.UploadPaymentImage)
-			authGroup.DELETE("/files/:key", admin.DeleteFile)
+			authGroup.POST("/files/upload", middleware.AdminRequireRole("super_admin"), admin.UploadFile)
+			authGroup.POST("/files/payment-image", middleware.AdminRequireRole("super_admin"), admin.UploadPaymentImage)
+			authGroup.DELETE("/files/:key", middleware.AdminRequireRole("super_admin"), admin.DeleteFile)
 
 			// 埋点统计
 			authGroup.GET("/events", admin.ListPageEvents)
@@ -142,15 +143,15 @@ func Setup(r *gin.Engine) {
 
 			// 精选语录管理
 			authGroup.GET("/quotes", admin.ListQuotes)
-			authGroup.POST("/quotes", admin.CreateQuote)
-			authGroup.PUT("/quotes/:id", admin.UpdateQuote)
-			authGroup.DELETE("/quotes/:id", admin.DeleteQuote)
+			authGroup.POST("/quotes", middleware.AdminRequireRole("super_admin"), admin.CreateQuote)
+			authGroup.PUT("/quotes/:id", middleware.AdminRequireRole("super_admin"), admin.UpdateQuote)
+			authGroup.DELETE("/quotes/:id", middleware.AdminRequireRole("super_admin"), admin.DeleteQuote)
 
 			// 支付配置管理
 			authGroup.GET("/payment-configs", admin.ListPaymentConfigs)
-			authGroup.POST("/payment-configs", admin.CreatePaymentConfig)
-			authGroup.PUT("/payment-configs/:id", admin.UpdatePaymentConfig)
-			authGroup.DELETE("/payment-configs/:id", admin.DeletePaymentConfig)
+			authGroup.POST("/payment-configs", middleware.AdminRequireRole("super_admin"), admin.CreatePaymentConfig)
+			authGroup.PUT("/payment-configs/:id", middleware.AdminRequireRole("super_admin"), admin.UpdatePaymentConfig)
+			authGroup.DELETE("/payment-configs/:id", middleware.AdminRequireRole("super_admin"), admin.DeletePaymentConfig)
 		}
 	}
 }

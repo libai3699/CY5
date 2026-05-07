@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net/http"
 
@@ -74,7 +75,7 @@ func AESDecrypt(encoded string) ([]byte, error) {
 
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
-		return nil, err
+		return nil, errors.New("ciphertext too short")
 	}
 
 	iv, ciphertext := data[:nonceSize], data[nonceSize:]

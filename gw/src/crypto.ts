@@ -27,7 +27,8 @@ async function deriveAESKey(secret: string) {
 }
 
 async function aesDecrypt(encoded: string) {
-  const secret = import.meta.env.VITE_APP_SECRET || 'cy5vpn_app_secret_32bytes_2026xK9';
+  const secret = import.meta.env.VITE_APP_SECRET;
+  if (!secret) throw new Error('VITE_APP_SECRET is required');
   const data = base64ToBytes(encoded);
   const iv = data.slice(0, 12);
   const ciphertextWithTag = data.slice(12);

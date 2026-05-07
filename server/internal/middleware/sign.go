@@ -7,11 +7,17 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"cy5vpn/server/internal/config"
 
 	"github.com/gin-gonic/gin"
+)
+
+var (
+	nonceMu    sync.Mutex
+	nonceStore = map[string]time.Time{}
 )
 
 // SignRequired 接口签名验证（设备注册、心跳等无需登录的高频接口）
@@ -39,6 +45,10 @@ func SignRequired() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "请求已过期"})
 			return
 		}
+		if !consumeNonce(deviceID, nonce, time.Unix(ts, 0).Add(5*time.Minute)) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"code": 403, "msg": "请求已被重放"})
+			return
+		}
 
 		// 验证签名
 		expected := calcSign(deviceID, timestampStr, nonce)
@@ -50,6 +60,25 @@ func SignRequired() gin.HandlerFunc {
 		c.Set("device_id_from_sign", deviceID)
 		c.Next()
 	}
+}
+
+func consumeNonce(deviceID, nonce string, expiresAt time.Time) bool {
+	now := time.Now()
+	key := deviceID + ":" + nonce
+
+	nonceMu.Lock()
+	defer nonceMu.Unlock()
+
+	for k, exp := range nonceStore {
+		if exp.Before(now) {
+			delete(nonceStore, k)
+		}
+	}
+	if _, exists := nonceStore[key]; exists {
+		return false
+	}
+	nonceStore[key] = expiresAt
+	return true
 }
 
 // calcSign 计算 HMAC-SHA256 签名

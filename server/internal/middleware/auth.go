@@ -35,6 +35,11 @@ func AuthRequired() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "token 无效或已过期"})
 			return
 		}
+		var user model.User
+		if err := database.DB.Select("id, status").First(&user, claims.UserID).Error; err != nil || user.Status == 0 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "账号已禁用或不存在"})
+			return
+		}
 		if claims.DeviceID != "" {
 			var count int64
 			database.DB.Model(&model.Device{}).Where("device_id = ? AND user_id = ?", claims.DeviceID, claims.UserID).Count(&count)

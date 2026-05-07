@@ -31,7 +31,10 @@ async function deriveAESKey(secret, usage) {
 }
 
 async function encryptSiteConfig(config) {
-  const secret = process.env.APP_SECRET || 'cy5vpn_app_secret_32bytes_2026xK9';
+  const secret = process.env.APP_SECRET;
+  if (!secret) {
+    throw new Error('APP_SECRET is required');
+  }
   const encoded = new TextEncoder().encode(JSON.stringify(config));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveAESKey(secret, 'encrypt');

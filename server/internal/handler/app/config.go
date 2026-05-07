@@ -8,6 +8,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var publicConfigKeys = map[string]bool{
+	"contact_wechat":      true,
+	"contact_telegram":    true,
+	"contact_email":       true,
+	"contact_qq":          true,
+	"download_vpn_apk":    true,
+	"download_acc_apk":    true,
+	"download_vpn_exe":    true,
+	"download_acc_exe":    true,
+	"app_vpn_version":     true,
+	"app_acc_version":     true,
+}
+
 // GetConfig 获取 App 公共配置（订阅链接、联系方式、下载链接）
 func GetConfig(c *gin.Context) {
 	var configs []model.AppConfig
@@ -15,7 +28,9 @@ func GetConfig(c *gin.Context) {
 
 	result := make(map[string]string)
 	for _, cfg := range configs {
-		result[cfg.KeyName] = cfg.Value
+		if publicConfigKeys[cfg.KeyName] {
+			result[cfg.KeyName] = cfg.Value
+		}
 	}
 
 	handler.OK(c, result)
@@ -24,7 +39,7 @@ func GetConfig(c *gin.Context) {
 // GetContactConfig 只返回联系方式配置（key_name 以 contact_ 开头）
 func GetContactConfig(c *gin.Context) {
 	var configs []model.AppConfig
-	database.DB.Where("key_name LIKE ? OR key_name = ?", "contact_%", "subscription_url").Order("sort_order asc").Find(&configs)
+	database.DB.Where("key_name LIKE ?", "contact_%").Order("sort_order asc").Find(&configs)
 
 	type contactItem struct {
 		Key   string `json:"key"`

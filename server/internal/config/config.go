@@ -22,6 +22,8 @@ type Config struct {
 	// 管理员
 	AdminUsername     string
 	AdminPasswordHash string
+	AdminCaptchaSecret string
+	AdminRole          string
 
 	// AES + HMAC 密钥
 	AppSecret string
@@ -72,6 +74,8 @@ func Load() {
 
 		AdminUsername:     getEnv("ADMIN_USERNAME", "admin"),
 		AdminPasswordHash: mustEnv("ADMIN_PASSWORD_HASH"),
+		AdminCaptchaSecret: mustEnv("ADMIN_CAPTCHA_SECRET"),
+		AdminRole:          getEnv("ADMIN_ROLE", "super_admin"),
 
 		AppSecret: mustEnv("APP_SECRET"),
 
