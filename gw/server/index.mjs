@@ -112,8 +112,7 @@ async function handleSiteConfig(res) {
     const backendEncrypted = json?.encrypted ?? json?.data?.encrypted;
     if (backendEncrypted) {
       if (!process.env.APP_SECRET) {
-        sendJson(res, 200, { encrypted: backendEncrypted });
-        return;
+        throw new Error('APP_SECRET is required to decrypt site config');
       }
       const backendConfig = await decryptSiteConfig(backendEncrypted);
       sendJson(res, 200, normalizeConfig(backendConfig?.data ?? backendConfig ?? {}));
