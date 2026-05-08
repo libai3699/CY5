@@ -43,25 +43,28 @@ func ListUsers(c *gin.Context) {
 
 	safe := make([]gin.H, 0, len(users))
 
-	// 批量查出所有用户对应设备的 display_id
+	// 批量查出所有用户对应设备的展示 ID 和最后 IP
 	deviceIDs := make([]string, 0, len(users))
 	for _, u := range users {
 		if u.DeviceID != "" {
 			deviceIDs = append(deviceIDs, u.DeviceID)
 		}
 	}
-	displayIDMap := make(map[string]string)
+	deviceMap := make(map[string]model.Device)
 	if len(deviceIDs) > 0 {
 		var devices []model.Device
-		database.DB.Select("device_id, display_id").Where("device_id IN ?", deviceIDs).Find(&devices)
+		database.DB.Select("device_id, display_id, last_ip").Where("device_id IN ?", deviceIDs).Find(&devices)
 		for _, d := range devices {
-			displayIDMap[d.DeviceID] = d.DisplayID
+			deviceMap[d.DeviceID] = d
 		}
 	}
 
 	for _, u := range users {
 		h := safeUserAdmin(u)
-		h["display_id"] = displayIDMap[u.DeviceID]
+		device := deviceMap[u.DeviceID]
+		h["display_id"] = device.DisplayID
+		h["last_ip"] = device.LastIP
+		h["last_ip_detail"] = describeIP(device.LastIP)
 		safe = append(safe, h)
 	}
 

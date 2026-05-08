@@ -81,7 +81,6 @@ func Load() {
 
 		ServerPort: getEnv("SERVER_PORT", "8080"),
 		GinMode:    getEnv("GIN_MODE", "debug"),
-
 		StorageProvider: getEnv("STORAGE_PROVIDER", ""),
 
 		OSSEndpoint:        getEnv("OSS_ENDPOINT", ""),

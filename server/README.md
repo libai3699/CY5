@@ -1,6 +1,8 @@
 下载phpstudy 打开Mysql 
 go run ./cmd/main.go
 go mod tidy
+go clean -modcache
+
 
 $env:GOOS="linux"; $env:GOARCH="amd64"; $env:CGO_ENABLED="0"; go build -o app ./cmd/main.go   //打包 放上宝塔 
 运行 ./1.sh

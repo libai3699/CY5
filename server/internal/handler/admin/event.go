@@ -41,11 +41,31 @@ func ListPageEvents(c *gin.Context) {
 		Limit(size).
 		Find(&events)
 
+	result := make([]gin.H, 0, len(events))
+	for _, event := range events {
+		result = append(result, gin.H{
+			"id":          event.ID,
+			"page":        event.Page,
+			"event":       event.Event,
+			"user_id":     event.UserID,
+			"username":    event.Username,
+			"device_id":   event.DeviceID,
+			"display_id":  event.DisplayID,
+			"plan_name":   event.PlanName,
+			"plan_price":  event.PlanPrice,
+			"cycle":       event.Cycle,
+			"stay_ms":     event.StayMs,
+			"ip":          event.IP,
+			"ip_detail":   describeIP(event.IP),
+			"created_at":  event.CreatedAt,
+		})
+	}
+
 	handler.OK(c, gin.H{
 		"total": total,
 		"page":  page,
 		"size":  size,
-		"list":  events,
+		"list":  result,
 	})
 }
 

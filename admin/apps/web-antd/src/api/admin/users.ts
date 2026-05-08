@@ -1,4 +1,5 @@
 import { requestClient } from '#/api/request';
+import type { IpDetail } from './logs';
 
 export interface User {
   id: number;
@@ -7,6 +8,8 @@ export interface User {
   status: number;
   device_id: string;
   display_id: string;
+  last_ip: string;
+  last_ip_detail?: IpDetail;
   free_used_seconds: number;
   free_limit_seconds: number;
   current_line_id: number | null;

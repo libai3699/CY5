@@ -12,6 +12,13 @@ function Logo({ size = 42 }: { size?: number }) {
   );
 }
 
+function scrollToSection(event: React.MouseEvent<HTMLAnchorElement>, hash: string, after?: () => void) {
+  event.preventDefault();
+  document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.history.replaceState(null, '', hash);
+  after?.();
+}
+
 function Navbar({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const t = copy[lang].nav;
@@ -26,13 +33,13 @@ function Navbar({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }
 
   return (
     <header className="nav">
-      <a className="brand" href="#top" aria-label="9.9 VPN">
+      <a className="brand" href="#top" aria-label="9.9 VPN" onClick={(event) => scrollToSection(event, '#top')}>
         <Logo />
         <span>9.9 VPN</span>
       </a>
       <nav>
         {links.map((link) => (
-          <a key={link.href} href={link.href} onClick={closeMenu}>{link.label}</a>
+          <a key={link.href} href={link.href} onClick={(event) => scrollToSection(event, link.href, closeMenu)}>{link.label}</a>
         ))}
         <button type="button" className="ghost-btn" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
           {t.lang}
@@ -52,7 +59,7 @@ function Navbar({ lang, setLang }: { lang: Lang; setLang: (lang: Lang) => void }
       {menuOpen && (
         <div className="mobile-menu">
           {links.map((link) => (
-            <a key={link.href} href={link.href} onClick={closeMenu}>{link.label}</a>
+            <a key={link.href} href={link.href} onClick={(event) => scrollToSection(event, link.href, closeMenu)}>{link.label}</a>
           ))}
           <button
             type="button"
@@ -83,9 +90,13 @@ function Hero({ lang }: { lang: Lang }) {
           <strong>{t.titleB}</strong>
         </h1>
         <p>{t.subtitle}</p>
+        <div className="trial-highlight">
+          <strong>{t.trialHighlight}</strong>
+          <span>{t.trialText}</span>
+        </div>
         <div className="hero-actions">
-          <a className="primary-btn hero-btn" href="#download">{t.primary}</a>
-          <a className="secondary-btn hero-btn" href="#contact">{t.secondary}</a>
+          <a className="primary-btn hero-btn" href="#download" onClick={(event) => scrollToSection(event, '#download')}>{t.primary}</a>
+          <a className="secondary-btn hero-btn" href="#contact" onClick={(event) => scrollToSection(event, '#contact')}>{t.secondary}</a>
         </div>
         <div className="stats">
           {[t.statA, t.statB, t.statC].map((item, index) => (
@@ -260,8 +271,6 @@ function ContactSection({ lang, config, loading }: { lang: Lang; config: Downloa
     ].filter((item) => String(item[2]).trim());
   }, [config, t]);
 
-  if (loading || items.length === 0) return null;
-
   return (
     <section id="contact" className="section contact-section">
       <div className="section-inner">
@@ -270,8 +279,11 @@ function ContactSection({ lang, config, loading }: { lang: Lang; config: Downloa
           <h2>{t.titleA}<span>{t.titleB}</span></h2>
           <p>{t.subtitle}</p>
         </div>
-        <div className="contact-grid">
-          {items.map(([key, label, value, href, icon]) => (
+        {loading || items.length === 0 ? (
+          <div className="contact-placeholder reveal">{loading ? t.loading : t.unavailable}</div>
+        ) : (
+          <div className="contact-grid">
+            {items.map(([key, label, value, href, icon]) => (
             <article className="contact-card reveal" key={key}>
               <div className="contact-icon">
                 {icon ? <img src={String(icon)} alt="" /> : String(label).slice(0, 2).toUpperCase()}
@@ -289,8 +301,9 @@ function ContactSection({ lang, config, loading }: { lang: Lang; config: Downloa
                 {copied === key ? t.copied : t.copy}
               </button>
             </article>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
