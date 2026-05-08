@@ -9,6 +9,22 @@ const root = process.cwd();
 const distDir = join(root, 'dist');
 const port = Number(process.env.PORT || 3000);
 
+async function loadEnvFallback() {
+  if (process.env.APP_SECRET) return;
+  const envPath = join(root, '.env');
+  const examplePath = join(root, '.env.example');
+  const path = existsSync(envPath) ? envPath : examplePath;
+  if (!existsSync(path)) return;
+  const text = await readFile(path, 'utf8');
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^APP_SECRET=(.*)$/.exec(line.trim());
+    if (match?.[1]) {
+      process.env.APP_SECRET = match[1];
+      return;
+    }
+  }
+}
+
 function bytesToBase64(bytes) {
   return Buffer.from(bytes).toString('base64');
 }
@@ -84,6 +100,7 @@ function normalizeConfig(config) {
 }
 
 async function handleSiteConfig(res) {
+  await loadEnvFallback();
   const url = 'https://vpnapi.wangwei.tech/api/public/config';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -94,6 +111,10 @@ async function handleSiteConfig(res) {
     const json = await response.json();
     const backendEncrypted = json?.encrypted ?? json?.data?.encrypted;
     if (backendEncrypted) {
+      if (!process.env.APP_SECRET) {
+        sendJson(res, 200, { encrypted: backendEncrypted });
+        return;
+      }
       const backendConfig = await decryptSiteConfig(backendEncrypted);
       sendJson(res, 200, normalizeConfig(backendConfig?.data ?? backendConfig ?? {}));
       return;
