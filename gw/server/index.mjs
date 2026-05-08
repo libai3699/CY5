@@ -169,7 +169,7 @@ async function serveStatic(req, res) {
 }
 
 createServer((req, res) => {
-  if (req.url?.startsWith('/api/site-config')) {
+  if (req.url?.startsWith('/api/site-config') || req.url?.startsWith('/api/config')) {
     void handleSiteConfig(res);
     return;
   }
