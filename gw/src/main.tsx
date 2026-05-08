@@ -350,7 +350,7 @@ function App() {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         const encrypted = data.encrypted ?? data.data?.encrypted;
-        const nextConfig = encrypted
+        const nextConfig = encrypted && import.meta.env.VITE_APP_SECRET
           ? await decryptSiteConfig(encrypted)
           : normalizeSiteConfig(data);
         if (!cancelled) setConfig(nextConfig);

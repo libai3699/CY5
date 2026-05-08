@@ -45,11 +45,42 @@ async function encryptSiteConfig(config) {
   return bytesToBase64(result);
 }
 
+function base64ToBytes(value) {
+  return Buffer.from(value, 'base64');
+}
+
+async function decryptSiteConfig(encrypted) {
+  const secret = process.env.APP_SECRET;
+  if (!secret) {
+    throw new Error('APP_SECRET is required');
+  }
+  const data = base64ToBytes(encrypted);
+  const iv = data.slice(0, 12);
+  const ciphertextWithTag = data.slice(12);
+  const key = await deriveAESKey(secret, 'decrypt');
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertextWithTag);
+  return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
 function pick(config, keys) {
   for (const key of keys) {
     if (config[key]) return config[key];
   }
   return '';
+}
+
+function normalizeConfig(config) {
+  return {
+    vpn_apk: pick(config, ['vpn_apk', 'download_vpn_apk', 'download_vpn_url', 'vpn_download_url']),
+    acc_apk: pick(config, ['acc_apk', 'download_acc_apk', 'download_acc_url', 'acc_download_url']),
+    vpn_version: pick(config, ['vpn_version', 'app_vpn_version', 'download_vpn_version']),
+    acc_version: pick(config, ['acc_version', 'app_acc_version', 'download_acc_version']),
+    contact_wechat: config.contact_wechat ?? '',
+    contact_telegram: config.contact_telegram ?? '',
+    telegram_subscription_url: pick(config, ['telegram_subscription_url', 'subscription_url']),
+    contact_qq: config.contact_qq ?? '',
+    contact_email: config.contact_email ?? '',
+  };
 }
 
 async function handleSiteConfig(res) {
@@ -63,23 +94,12 @@ async function handleSiteConfig(res) {
     const json = await response.json();
     const backendEncrypted = json?.encrypted ?? json?.data?.encrypted;
     if (backendEncrypted) {
-      sendJson(res, 200, { encrypted: backendEncrypted });
+      const backendConfig = await decryptSiteConfig(backendEncrypted);
+      sendJson(res, 200, normalizeConfig(backendConfig?.data ?? backendConfig ?? {}));
       return;
     }
     const config = json?.data ?? json ?? {};
-    const plainConfig = {
-      vpn_apk: pick(config, ['vpn_apk', 'download_vpn_apk', 'download_vpn_url', 'vpn_download_url']),
-      acc_apk: pick(config, ['acc_apk', 'download_acc_apk', 'download_acc_url', 'acc_download_url']),
-      vpn_version: pick(config, ['vpn_version', 'app_vpn_version', 'download_vpn_version']),
-      acc_version: pick(config, ['acc_version', 'app_acc_version', 'download_acc_version']),
-      contact_wechat: config.contact_wechat ?? '',
-      contact_telegram: config.contact_telegram ?? '',
-      telegram_subscription_url: pick(config, ['telegram_subscription_url', 'subscription_url']),
-      contact_qq: config.contact_qq ?? '',
-      contact_email: config.contact_email ?? '',
-    };
-    const encrypted = await encryptSiteConfig(plainConfig);
-    sendJson(res, 200, { encrypted });
+    sendJson(res, 200, normalizeConfig(config));
   } catch (error) {
     console.error('[site-config]', error);
     sendJson(res, 500, { error: '获取配置失败' });

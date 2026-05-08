@@ -38,6 +38,9 @@ async function aesDecrypt(encoded: string) {
 }
 
 export async function decryptSiteConfig(encrypted: string): Promise<DownloadConfig> {
+  if (!import.meta.env.VITE_APP_SECRET) {
+    throw new Error('Encrypted site config requires VITE_APP_SECRET');
+  }
   const payload = JSON.parse(await aesDecrypt(encrypted));
   return normalizeSiteConfig(payload);
 }
