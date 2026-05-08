@@ -80,7 +80,7 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use('/api/site-config', async (_req, res) => {
           try {
-            const response = await fetch('http://127.0.0.1:8989/api/public/config');
+            const response = await fetch('https://vpnapi.wangwei.tech/api/public/config');
             if (!response.ok) throw new Error(`backend ${response.status}`);
             const json = await response.json();
             const encrypted = json?.encrypted ?? json?.data?.encrypted;
