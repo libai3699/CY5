@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -73,30 +74,40 @@ func Captcha(c *gin.Context) {
 
 func Login(c *gin.Context) {
 	var req adminLoginReq
+	status := int8(0)
+	reason := "参数错误"
+	username := ""
+	defer func() {
+		writeAdminLog(c, username, status, reason)
+	}()
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handler.Fail(c, 400, "参数错误")
 		return
 	}
+	username = req.Username
 
 	if req.Username != config.App.AdminUsername ||
 		bcrypt.CompareHashAndPassword([]byte(config.App.AdminPasswordHash), []byte(req.Password)) != nil {
-		writeAdminLog(c, req.Username, 0)
+		reason = "用户名或密码错误"
 		handler.Fail(c, 1002, "用户名或密码错误")
 		return
 	}
 	if !validateAdminCaptcha(req.Captcha) {
-		writeAdminLog(c, req.Username, 0)
+		reason = "验证码错误"
 		handler.Fail(c, 1003, "验证码错误")
 		return
 	}
 
 	token, err := config.GenerateAdminToken(req.Username)
 	if err != nil {
+		reason = "token 生成失败"
 		handler.Fail(c, 500, "token 生成失败")
 		return
 	}
 
-	writeAdminLog(c, req.Username, 1)
+	status = 1
+	reason = ""
 	handler.OK(c, gin.H{"accessToken": token})
 }
 
@@ -126,12 +137,19 @@ func Logout(c *gin.Context) {
 	handler.OK(c, gin.H{"msg": "ok"})
 }
 
-func writeAdminLog(c *gin.Context, username string, status int8) {
-	log := model.AdminLoginLog{
-		Username:  username,
-		IP:        c.ClientIP(),
-		UserAgent: c.GetHeader("User-Agent"),
-		Status:    status,
+func writeAdminLog(c *gin.Context, username string, status int8, reason string) {
+	if username == "" {
+		username = "-"
 	}
-	database.DB.Create(&log)
+	record := map[string]interface{}{
+		"username":    username,
+		"ip":          c.ClientIP(),
+		"user_agent":  c.GetHeader("User-Agent"),
+		"status":      status,
+		"fail_reason": reason,
+		"created_at":  time.Now(),
+	}
+	if err := database.DB.Model(&model.AdminLoginLog{}).Create(record).Error; err != nil {
+		log.Printf("[admin_login_log] write failed: %v", err)
+	}
 }

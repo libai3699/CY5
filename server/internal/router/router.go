@@ -139,6 +139,7 @@ func Setup(r *gin.Engine) {
 			// 埋点统计
 			authGroup.GET("/events", admin.ListPageEvents)
 			authGroup.GET("/events/stats", admin.PageEventStats)
+			authGroup.GET("/logs/user", admin.ListUserLogs)
 			authGroup.GET("/logs/admin", admin.ListAdminLogs)
 
 			// 精选语录管理
