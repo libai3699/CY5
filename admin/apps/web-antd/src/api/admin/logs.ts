@@ -23,6 +23,8 @@ export interface AdminLog {
   };
   user_agent: string;
   status: number;
+  status_text: string;
+  fail_reason: string;
   created_at: string;
 }
 

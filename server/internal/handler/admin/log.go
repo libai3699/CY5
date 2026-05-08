@@ -31,7 +31,23 @@ func ListUserLogs(c *gin.Context) {
 		Limit(size).
 		Find(&logs)
 
-	handler.OK(c, gin.H{"total": total, "page": page, "size": size, "list": logs})
+	result := make([]gin.H, 0, len(logs))
+	for _, log := range logs {
+		result = append(result, gin.H{
+			"id":          log.ID,
+			"user_id":     log.UserID,
+			"device_id":   log.DeviceID,
+			"ip":          log.IP,
+			"ip_detail":   describeIP(log.IP),
+			"app_version": log.AppVersion,
+			"status":      log.Status,
+			"status_text": loginStatusText(log.Status),
+			"fail_reason": log.FailReason,
+			"created_at":  formatDateTime(log.CreatedAt),
+		})
+	}
+
+	handler.OK(c, gin.H{"total": total, "page": page, "size": size, "list": result})
 }
 
 func ListAdminLogs(c *gin.Context) {
@@ -62,7 +78,9 @@ func ListAdminLogs(c *gin.Context) {
 			"ip_detail":  describeIP(log.IP),
 			"user_agent": log.UserAgent,
 			"status":     log.Status,
-			"created_at": log.CreatedAt,
+			"status_text": loginStatusText(log.Status),
+			"fail_reason": log.FailReason,
+			"created_at": formatDateTime(log.CreatedAt),
 		})
 	}
 

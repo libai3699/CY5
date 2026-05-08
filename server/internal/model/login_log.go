@@ -23,6 +23,7 @@ type AdminLoginLog struct {
 	IP        string    `gorm:"size:64" json:"ip"`
 	UserAgent string    `gorm:"size:512" json:"user_agent"`
 	Status    int8      `gorm:"default:1" json:"status"` // 1成功 0失败
+	FailReason string    `gorm:"size:255" json:"fail_reason"`
 	CreatedAt time.Time `gorm:"index" json:"created_at"`
 }
 
