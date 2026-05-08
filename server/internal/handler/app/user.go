@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"cy5vpn/server/internal/database"
+	"cy5vpn/server/internal/geoip"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
 
@@ -128,7 +129,25 @@ func ListLoginDevices(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	var devices []model.Device
 	database.DB.Where("user_id = ?", userID).Order("last_seen_at desc, updated_at desc").Find(&devices)
-	handler.OK(c, devices)
+	result := make([]gin.H, 0, len(devices))
+	for _, device := range devices {
+		result = append(result, gin.H{
+			"id":             device.ID,
+			"device_id":      device.DeviceID,
+			"display_id":     device.DisplayID,
+			"user_id":        device.UserID,
+			"brand":          device.Brand,
+			"model":          device.Model,
+			"os_version":     device.OSVersion,
+			"app_version":    device.AppVersion,
+			"last_ip":        device.LastIP,
+			"last_ip_detail": geoip.Describe(device.LastIP),
+			"last_seen_at":   device.LastSeenAt,
+			"created_at":     device.CreatedAt,
+			"updated_at":     device.UpdatedAt,
+		})
+	}
+	handler.OK(c, result)
 }
 
 func LogoutCurrentDevice(c *gin.Context) {

@@ -1,4 +1,5 @@
 import { requestClient } from '#/api/request';
+import type { IpDetail } from './logs';
 
 export interface Device {
   id: number;
@@ -10,6 +11,7 @@ export interface Device {
   os_version: string;
   app_version: string;
   last_ip: string;
+  last_ip_detail?: IpDetail;
   last_seen_at: string | null;
   created_at: string;
 }

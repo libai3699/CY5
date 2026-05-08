@@ -1,11 +1,10 @@
 package admin
 
 import (
-	"net"
 	"strconv"
-	"strings"
 
 	"cy5vpn/server/internal/database"
+	"cy5vpn/server/internal/geoip"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
 
@@ -88,40 +87,5 @@ func ListAdminLogs(c *gin.Context) {
 }
 
 func describeIP(ip string) gin.H {
-	parsed := net.ParseIP(ip)
-	detail := gin.H{"ip": ip, "type": "unknown", "is_private": false, "location": "未知"}
-	if parsed == nil {
-		return detail
-	}
-	if parsed.IsLoopback() {
-		detail["type"] = "loopback"
-		detail["location"] = "本机"
-		return detail
-	}
-	if parsed.IsPrivate() {
-		detail["type"] = "private"
-		detail["is_private"] = true
-		detail["location"] = privateIPLocation(ip)
-		return detail
-	}
-	if parsed.To4() != nil {
-		detail["type"] = "ipv4"
-	} else {
-		detail["type"] = "ipv6"
-	}
-	detail["location"] = "公网 IP（未接入 GeoIP 库）"
-	return detail
-}
-
-func privateIPLocation(ip string) string {
-	switch {
-	case strings.HasPrefix(ip, "192.168."):
-		return "局域网 192.168.x.x"
-	case strings.HasPrefix(ip, "10."):
-		return "局域网 10.x.x.x"
-	case strings.HasPrefix(ip, "172."):
-		return "局域网 172.16-31.x.x"
-	default:
-		return "内网地址"
-	}
+	return gin.H(geoip.Describe(ip))
 }

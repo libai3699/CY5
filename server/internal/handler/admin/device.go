@@ -38,11 +38,30 @@ func ListDevices(c *gin.Context) {
 		Limit(size).
 		Find(&devices)
 
+	result := make([]gin.H, 0, len(devices))
+	for _, device := range devices {
+		result = append(result, gin.H{
+			"id":             device.ID,
+			"device_id":      device.DeviceID,
+			"display_id":     device.DisplayID,
+			"user_id":        device.UserID,
+			"brand":          device.Brand,
+			"model":          device.Model,
+			"os_version":     device.OSVersion,
+			"app_version":    device.AppVersion,
+			"last_ip":        device.LastIP,
+			"last_ip_detail": describeIP(device.LastIP),
+			"last_seen_at":   device.LastSeenAt,
+			"created_at":     device.CreatedAt,
+			"updated_at":     device.UpdatedAt,
+		})
+	}
+
 	handler.OK(c, gin.H{
 		"total": total,
 		"page":  page,
 		"size":  size,
-		"list":  devices,
+		"list":  result,
 	})
 }
 
@@ -54,5 +73,19 @@ func GetDevice(c *gin.Context) {
 		handler.Fail(c, 404, "设备不存在")
 		return
 	}
-	handler.OK(c, device)
+	handler.OK(c, gin.H{
+		"id":             device.ID,
+		"device_id":      device.DeviceID,
+		"display_id":     device.DisplayID,
+		"user_id":        device.UserID,
+		"brand":          device.Brand,
+		"model":          device.Model,
+		"os_version":     device.OSVersion,
+		"app_version":    device.AppVersion,
+		"last_ip":        device.LastIP,
+		"last_ip_detail": describeIP(device.LastIP),
+		"last_seen_at":   device.LastSeenAt,
+		"created_at":     device.CreatedAt,
+		"updated_at":     device.UpdatedAt,
+	})
 }

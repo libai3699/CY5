@@ -40,6 +40,15 @@ onMounted(load);
         <el-table-column prop="os_version" label="Android版本" width="110" />
         <el-table-column prop="app_version" label="App版本" width="100" />
         <el-table-column prop="last_ip" label="最后IP" width="140" />
+        <el-table-column label="IP 详情" min-width="220">
+          <template #default="{ row }">
+            <div>{{ row.last_ip_detail?.location || '未知' }}</div>
+            <div class="text-xs text-gray-500">
+              {{ row.last_ip_detail?.type || '-' }}
+              <span v-if="row.last_ip_detail?.is_private"> / 内网</span>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="last_seen_at" label="最后活跃" width="170" />
       </el-table>
       <div class="mt-4 flex justify-end">

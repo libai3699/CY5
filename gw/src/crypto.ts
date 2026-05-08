@@ -45,15 +45,25 @@ export async function decryptSiteConfig(encrypted: string): Promise<DownloadConf
 export function normalizeSiteConfig(payload: any): DownloadConfig {
   const config = payload?.data ?? payload ?? {};
 
+  const pick = (...keys: string[]) => {
+    for (const key of keys) {
+      const value = config[key];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        return String(value);
+      }
+    }
+    return '';
+  };
+
   return {
-    vpn_apk: config.vpn_apk ?? config.download_vpn_apk ?? '',
-    acc_apk: config.acc_apk ?? config.download_acc_apk ?? '',
-    vpn_version: config.vpn_version ?? config.app_vpn_version ?? '',
-    acc_version: config.acc_version ?? config.app_acc_version ?? '',
-    contact_wechat: config.contact_wechat ?? '',
-    contact_telegram: config.contact_telegram ?? '',
-    telegram_subscription_url: config.telegram_subscription_url ?? config.subscription_url ?? '',
-    contact_qq: config.contact_qq ?? '',
-    contact_email: config.contact_email ?? '',
+    vpn_apk: pick('vpn_apk', 'download_vpn_apk', 'download_vpn_url', 'vpn_download_url'),
+    acc_apk: pick('acc_apk', 'download_acc_apk', 'download_acc_url', 'acc_download_url'),
+    vpn_version: pick('vpn_version', 'app_vpn_version', 'download_vpn_version'),
+    acc_version: pick('acc_version', 'app_acc_version', 'download_acc_version'),
+    contact_wechat: pick('contact_wechat'),
+    contact_telegram: pick('contact_telegram'),
+    telegram_subscription_url: pick('telegram_subscription_url', 'subscription_url'),
+    contact_qq: pick('contact_qq'),
+    contact_email: pick('contact_email'),
   };
 }
