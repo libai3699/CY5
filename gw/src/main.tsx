@@ -8,14 +8,13 @@ import './styles.css';
 
 function Logo({ size = 42 }: { size?: number }) {
   return (
-    <img className="logo-img" src="/logo.png" width={size} height={size} alt="9.9 VPN Logo" />
+    <img className="logo-img" src={`${import.meta.env.BASE_URL}logo.png`} width={size} height={size} alt="9.9 VPN Logo" />
   );
 }
 
 function scrollToSection(event: React.MouseEvent<HTMLAnchorElement>, hash: string, after?: () => void) {
   event.preventDefault();
   document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  window.history.replaceState(null, '', hash);
   after?.();
 }
 
@@ -232,7 +231,9 @@ function DownloadSection({ lang, config, error, loading }: { lang: Lang; config:
 
 function PaymentMethodsSection({ lang }: { lang: Lang }) {
   const t = copy[lang].payments;
-  const icons = ['/contact-icons/USDT.png', '/contact-icons/wechat.png', '/contact-icons/alipay.png'];
+  const icons = ['contact-icons/USDT.png', 'contact-icons/wechat.png', 'contact-icons/alipay.png'].map(
+    (path) => `${import.meta.env.BASE_URL}${path}`,
+  );
   return (
     <section id="payments" className="section payment-section">
       <div className="section-inner">
@@ -263,11 +264,11 @@ function ContactSection({ lang, config, loading }: { lang: Lang; config: Downloa
   const items = useMemo(() => {
     if (!config) return [];
     return [
-      ['contact_wechat', t.wechat, config.contact_wechat, '#', '/contact-icons/wechat.png'],
-      ['contact_telegram', t.telegram, config.contact_telegram, config.contact_telegram.startsWith('http') ? config.contact_telegram : `https://t.me/${config.contact_telegram.replace('@', '')}`, '/contact-icons/telegram.png'],
-      ['telegram_subscription_url', t.telegramSubscription, config.telegram_subscription_url, config.telegram_subscription_url, '/contact-icons/telegram.png'],
-      ['contact_qq', t.qq, config.contact_qq, `tencent://message/?uin=${config.contact_qq}`, '/contact-icons/qq.png'],
-      ['contact_email', t.email, config.contact_email, `mailto:${config.contact_email}`, '/contact-icons/gmail.png'],
+      ['contact_wechat', t.wechat, config.contact_wechat, '#', `${import.meta.env.BASE_URL}contact-icons/wechat.png`],
+      ['contact_telegram', t.telegram, config.contact_telegram, config.contact_telegram.startsWith('http') ? config.contact_telegram : `https://t.me/${config.contact_telegram.replace('@', '')}`, `${import.meta.env.BASE_URL}contact-icons/telegram.png`],
+      ['telegram_subscription_url', t.telegramSubscription, config.telegram_subscription_url, config.telegram_subscription_url, `${import.meta.env.BASE_URL}contact-icons/telegram.png`],
+      ['contact_qq', t.qq, config.contact_qq, `tencent://message/?uin=${config.contact_qq}`, `${import.meta.env.BASE_URL}contact-icons/qq.png`],
+      ['contact_email', t.email, config.contact_email, `mailto:${config.contact_email}`, `${import.meta.env.BASE_URL}contact-icons/gmail.png`],
     ].filter((item) => String(item[2]).trim());
   }, [config, t]);
 
@@ -342,6 +343,12 @@ function App() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     async function loadConfig() {
       try {
@@ -350,7 +357,7 @@ function App() {
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         const encrypted = data.encrypted ?? data.data?.encrypted;
-        const nextConfig = encrypted && import.meta.env.VITE_APP_SECRET
+        const nextConfig = encrypted
           ? await decryptSiteConfig(encrypted)
           : normalizeSiteConfig(data);
         if (!cancelled) setConfig(nextConfig);

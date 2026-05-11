@@ -44,9 +44,18 @@ class DeviceIdentity {
       final deviceInfo = DeviceInfoPlugin();
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
-        final id = androidInfo.id?.trim();
-        if (id != null && id.isNotEmpty && id != 'unknown') {
-          return 'a_$id';
+        // device_info_plus 10.x 未暴露 ANDROID_ID 字段
+        // 用 fingerprint（系统构建指纹）作为稳定设备标识
+        // 格式：brand/product/device:version/id/incremental:type/tags
+        // 同一台设备卸载重装不变，系统 OTA 升级后可能变化（可接受）
+        final fp = androidInfo.fingerprint.trim();
+        if (fp.isNotEmpty && fp != 'unknown') {
+          return 'a_$fp';
+        }
+        // fingerprint 不可用时降级用 serialNumber
+        final serial = androidInfo.serialNumber.trim();
+        if (serial.isNotEmpty && serial != 'unknown') {
+          return 'a_$serial';
         }
       } else if (Platform.isIOS) {
         final iosInfo = await deviceInfo.iosInfo;
@@ -87,7 +96,7 @@ class DeviceIdentity {
         'brand': Platform.operatingSystem,
         'model': Platform.localHostname,
         'os_version': Platform.operatingSystemVersion,
-        'app_version': '1.0.0',
+        'app_version': kAppVersion,
       }));
       final response =
           await request.close().timeout(const Duration(seconds: 8));

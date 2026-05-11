@@ -1,5 +1,7 @@
 import type { DownloadConfig } from './types';
 
+const APP_SECRET = 'TLROCWbiOQ7SGTyVarhqiS3Cfo5OqYVxpOsSTrbUXqWw62LI';
+
 function base64ToBytes(value: string) {
   const binary = window.atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -27,20 +29,15 @@ async function deriveAESKey(secret: string) {
 }
 
 async function aesDecrypt(encoded: string) {
-  const secret = import.meta.env.VITE_APP_SECRET;
-  if (!secret) throw new Error('VITE_APP_SECRET is required');
   const data = base64ToBytes(encoded);
   const iv = data.slice(0, 12);
   const ciphertextWithTag = data.slice(12);
-  const key = await deriveAESKey(secret);
+  const key = await deriveAESKey(APP_SECRET);
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertextWithTag);
   return new TextDecoder().decode(decrypted);
 }
 
 export async function decryptSiteConfig(encrypted: string): Promise<DownloadConfig> {
-  if (!import.meta.env.VITE_APP_SECRET) {
-    throw new Error('Encrypted site config requires VITE_APP_SECRET');
-  }
   const payload = JSON.parse(await aesDecrypt(encrypted));
   return normalizeSiteConfig(payload);
 }

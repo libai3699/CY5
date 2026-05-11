@@ -615,16 +615,19 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.grey[300]!),
                 ),
-                child: Image.network(
-                  config.qrCode,
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.network(
+                    config.qrCode,
                     width: 200,
                     height: 200,
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.error_outline, size: 48),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 200,
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.error_outline, size: 48),
+                    ),
                   ),
                 ),
               ),
@@ -759,6 +762,50 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          // USDT 充值活动提示
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Text('🎁', style: TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'USDT 充值活动',
+                        style: TextStyle(
+                          color: Color(0xFFFFD700),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        '充值 10U 送 1U，联系客服领取',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -792,16 +839,19 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.grey[300]!),
                 ),
-                child: Image.network(
-                  config.qrCode,
-                  width: 200,
-                  height: 200,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Image.network(
+                    config.qrCode,
                     width: 200,
                     height: 200,
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.error_outline, size: 48),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 200,
+                      height: 200,
+                      color: Colors.grey[200],
+                      child: const Icon(Icons.error_outline, size: 48),
+                    ),
                   ),
                 ),
               ),

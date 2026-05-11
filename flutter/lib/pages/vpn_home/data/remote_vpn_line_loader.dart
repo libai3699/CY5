@@ -19,7 +19,18 @@ class RemoteVpnLineLoader {
       final node = await _fetchRemoteLine();
       debugPrint('[VPN_LINE] fetched: ${jsonEncode(node.toJson())}');
 
-      final rawUri = node.rawUri.trim();
+      // 当 protocol=SUBSCRIPTION 但 rawUri 为空时，尝试用 address 拼出订阅 URL
+      var rawUri = node.rawUri.trim();
+      if (rawUri.isEmpty &&
+          node.protocol.toUpperCase() == 'SUBSCRIPTION' &&
+          node.address.isNotEmpty) {
+        final addr = node.address.trim();
+        rawUri = addr.startsWith('http://') || addr.startsWith('https://')
+            ? addr
+            : 'https://$addr';
+        debugPrint('[VPN_LINE] rawUri empty, built from address: $rawUri');
+      }
+
       if (rawUri.startsWith('http://') || rawUri.startsWith('https://')) {
         debugPrint('[VPN_LINE] subscription url: $rawUri');
         final allNodes = await _subscriptionLoader.load(rawUri);

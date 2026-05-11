@@ -24,6 +24,11 @@ func GetPublicConfig(c *gin.Context) {
 		}
 	}
 
+	if c.Query("plain") == "1" {
+		handler.OK(c, result)
+		return
+	}
+
 	payload, err := json.Marshal(result)
 	if err != nil {
 		handler.Fail(c, 500, "配置序列化失败")

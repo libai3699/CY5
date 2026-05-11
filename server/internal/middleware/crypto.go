@@ -85,7 +85,21 @@ func AESDecrypt(encoded string) ([]byte, error) {
 // responseWriter 包装 gin.ResponseWriter，拦截响应 body
 type responseWriter struct {
 	gin.ResponseWriter
-	body *bytes.Buffer
+	body   *bytes.Buffer
+	status int
+}
+
+// WriteHeader 拦截状态码，防止提前写入底层 writer
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.status = code
+}
+
+// Status 返回已记录的状态码（未设置时默认 200）
+func (rw *responseWriter) Status() int {
+	if rw.status == 0 {
+		return http.StatusOK
+	}
+	return rw.status
 }
 
 func (rw *responseWriter) Write(b []byte) (int, error) {

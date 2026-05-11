@@ -10,6 +10,7 @@ import (
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // GetProfile 获取用户信息 + 当前套餐状态
@@ -37,10 +38,21 @@ func GetProfile(c *gin.Context) {
 func GetUserStatus(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 
+	println("[STATUS] ========== 获取用户状态 ==========")
+	println("[STATUS] UserID:", userID)
+
 	var user model.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
+		println("[ERROR] 查询用户失败:", err.Error())
 		handler.Fail(c, 404, "用户不存在")
 		return
+	}
+
+	println("[STATUS] 当前已用流量:", user.TrafficUsedBytes, "bytes (", formatGB(user.TrafficUsedBytes), ")")
+	if user.TrafficLimitBytes != nil {
+		println("[STATUS] 流量限制:", *user.TrafficLimitBytes, "bytes (", formatGB(*user.TrafficLimitBytes), ")")
+	} else {
+		println("[STATUS] 流量限制: 无限")
 	}
 
 	hasPlan := userHasPlan(user)
@@ -71,6 +83,9 @@ func GetUserStatus(c *gin.Context) {
 		}
 	}
 
+	println("[STATUS] 返回结果 | 剩余流量:", trafficRemaining)
+	println("[STATUS] ========== 状态查询完成 ==========")
+
 	handler.OK(c, gin.H{
 		"plan_level":          planLevel,
 		"remaining_seconds":   remainingSeconds,
@@ -81,13 +96,17 @@ func GetUserStatus(c *gin.Context) {
 }
 
 type userHeartbeatReq struct {
-	Seconds int `json:"seconds"`
+	Seconds      int   `json:"seconds"`
+	TrafficBytes int64 `json:"traffic_bytes"` // 本次心跳周期内的流量增量（字节）
 }
 
 func UserHeartbeat(c *gin.Context) {
 	userID := c.GetUint64("user_id")
 	var req userHeartbeatReq
 	_ = c.ShouldBindJSON(&req)
+
+	println("[HEARTBEAT] ========== 开始处理心跳 ==========")
+	println("[HEARTBEAT] UserID:", userID, "| 上报秒数:", req.Seconds, "| 上报流量:", req.TrafficBytes, "bytes")
 
 	seconds := req.Seconds
 	if seconds <= 0 {
@@ -96,21 +115,81 @@ func UserHeartbeat(c *gin.Context) {
 	if seconds > 65 {
 		seconds = 65
 	}
+	// 流量增量：限制单次上报最多 500MB，防止异常数据
+	trafficBytes := req.TrafficBytes
+	if trafficBytes < 0 {
+		trafficBytes = 0
+	}
+	const maxTrafficPerHeartbeat = int64(500 * 1024 * 1024) // 500MB
+	if trafficBytes > maxTrafficPerHeartbeat {
+		println("[HEARTBEAT] 流量超限，限制为500MB，原值:", trafficBytes)
+		trafficBytes = maxTrafficPerHeartbeat
+	}
 
 	var user model.User
 	if err := database.DB.First(&user, userID).Error; err != nil {
+		println("[ERROR] 查询用户失败:", err.Error())
 		handler.Fail(c, 404, "用户不存在")
 		return
 	}
 
+	println("[HEARTBEAT] 查询用户成功 | 当前已用流量:", user.TrafficUsedBytes, "bytes (", formatGB(user.TrafficUsedBytes), ")")
+	if user.TrafficLimitBytes != nil {
+		println("[HEARTBEAT] 流量限制:", *user.TrafficLimitBytes, "bytes (", formatGB(*user.TrafficLimitBytes), ")")
+	} else {
+		println("[HEARTBEAT] 流量限制: 无限")
+	}
+
 	hasPlan := userHasPlan(user)
+
+	updates := map[string]interface{}{}
+
+	// 累加免费时长（无套餐时）
 	if !hasPlan {
 		used := user.FreeUsedSeconds + seconds
 		if used > user.FreeLimitSeconds {
 			used = user.FreeLimitSeconds
 		}
-		database.DB.Model(&user).Update("free_used_seconds", used)
+		updates["free_used_seconds"] = used
 		user.FreeUsedSeconds = used
+	}
+
+	// 累加流量（使用原子更新，防止高并发时被覆盖）
+	trafficExhausted := false
+	if trafficBytes > 0 {
+		// 记录更新前的值
+		oldTraffic := user.TrafficUsedBytes
+		
+		// 原子更新
+		result := database.DB.Model(&user).Update("traffic_used_bytes", gorm.Expr("traffic_used_bytes + ?", trafficBytes))
+		if result.Error != nil {
+			handler.Fail(c, 500, "流量更新失败")
+			return
+		}
+		
+		// 重新查询最新的 traffic_used_bytes，确保计算剩余流量时使用最新值
+		if err := database.DB.Model(&user).Select("traffic_used_bytes").Where("id = ?", user.ID).Scan(&user).Error; err != nil {
+			handler.Fail(c, 500, "查询流量失败")
+			return
+		}
+		
+		// 详细日志：记录流量变化
+		println("[TRAFFIC] UserID:", user.ID, 
+			"| 上报:", trafficBytes, "bytes (", formatGB(trafficBytes), ")",
+			"| 更新前:", oldTraffic, "bytes (", formatGB(oldTraffic), ")",
+			"| 更新后:", user.TrafficUsedBytes, "bytes (", formatGB(user.TrafficUsedBytes), ")",
+			"| 影响行数:", result.RowsAffected)
+	}
+
+	if hasPlan && user.TrafficLimitBytes != nil && user.TrafficUsedBytes >= *user.TrafficLimitBytes {
+		trafficExhausted = true
+		println("[TRAFFIC] UserID:", user.ID, "流量已耗尽! 已用:", user.TrafficUsedBytes, "限制:", *user.TrafficLimitBytes)
+	}
+
+	if len(updates) > 0 {
+		if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+			println("[ERROR] 更新用户信息失败:", err.Error())
+		}
 	}
 
 	remaining := freeRemaining(user)
@@ -118,10 +197,29 @@ func UserHeartbeat(c *gin.Context) {
 		remaining = int(time.Until(*user.PlanExpiredAt).Seconds())
 	}
 
+	// 计算流量剩余
+	trafficRemaining := "0 GB"
+	if hasPlan {
+		if user.TrafficLimitBytes != nil {
+			left := *user.TrafficLimitBytes - user.TrafficUsedBytes
+			if left < 0 {
+				left = 0
+			}
+			trafficRemaining = formatGB(left)
+		} else {
+			trafficRemaining = "不限流量"
+		}
+	}
+
+	println("[HEARTBEAT] 返回结果 | 剩余流量:", trafficRemaining, "| 流量耗尽:", trafficExhausted)
+	println("[HEARTBEAT] ========== 心跳处理完成 ==========")
+
 	handler.OK(c, gin.H{
 		"has_plan":            hasPlan,
 		"remaining_seconds":   remaining,
 		"remaining_time_text": formatRemainingTime(remaining),
+		"traffic_remaining":   trafficRemaining,
+		"traffic_exhausted":   trafficExhausted,
 	})
 }
 
@@ -170,7 +268,7 @@ func RemoveLoginDevice(c *gin.Context) {
 
 func formatGB(bytes int64) string {
 	gb := float64(bytes) / 1024 / 1024 / 1024
-	return strconv.FormatFloat(gb, 'f', 2, 64) + " GB"
+	return strconv.FormatFloat(gb, 'f', 3, 64) + " GB"
 }
 
 // userHasPlan 判断用户是否有有效套餐（只要 plan_expired_at 未过期即可）

@@ -62,9 +62,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
   bool _isRefreshingLines = false;
   Timer? _appStatusRefreshTimer;
   Timer? _heartbeatTimer;
+  Timer? _uiRefreshTimer;
   Timer? _remainingTimer;
   StreamSubscription<String>? _statusSubscription;
   int _heartbeatFailCount = 0; // 心跳失败计数
+  int _pendingTrafficBytes = 0; // 未成功上报的累计流量
+  int _pendingSeconds = 0;      // 未成功上报的累计时长
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
@@ -134,11 +137,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
             });
             break;
           case 'connected':
-            setState(() {
-              _status = VpnStatus.connected;
-              _message = '${_selectedNode?.name ?? "VPN"} 已连接';
-            });
-            _syncHeartbeatTimer();
+            if (_status != VpnStatus.connected) {
+              setState(() {
+                _status = VpnStatus.connected;
+                _message = '${_selectedNode?.name ?? "VPN"} 已连接';
+              });
+              _syncHeartbeatTimer();
+            }
             break;
           case 'disconnected':
             setState(() {
@@ -146,6 +151,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
               _message = null;
             });
             _heartbeatTimer?.cancel();
+            _uiRefreshTimer?.cancel();
             break;
         }
       },
@@ -250,17 +256,48 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   void _syncHeartbeatTimer() {
     _heartbeatTimer?.cancel();
+    _uiRefreshTimer?.cancel();
     _heartbeatFailCount = 0; // 重置失败计数
     _sendHeartbeat(seconds: 1);
     // 改为30秒心跳间隔，避免VPN在心跳前断开
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) _sendHeartbeat(seconds: 30);
     });
+    
+    // 启动秒级UI刷新，用于前端乐观更新流量显示
+    _uiRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _isConnected) {
+        setState(() {}); // 触发 _displayTrafficRemaining 重新计算
+      }
+    });
   }
 
   Future<void> _sendHeartbeat({required int seconds}) async {
     final token = _session?.token;
     if (token == null || token.isEmpty || !_isConnected) return;
+    
+    print('[HEARTBEAT-CLIENT] ========== 开始发送心跳 ==========');
+    
+    // 获取本次心跳周期内的流量增量并累加到 pending
+    final trafficDelta = VpnNativeChannel.consumeTrafficDelta();
+    print('[HEARTBEAT-CLIENT] 本次流量增量: $trafficDelta bytes (${_formatBytes(trafficDelta)})');
+    
+    _pendingTrafficBytes += trafficDelta;
+    _pendingSeconds += seconds;
+    
+    print('[HEARTBEAT-CLIENT] 累计待上报流量: $_pendingTrafficBytes bytes (${_formatBytes(_pendingTrafficBytes)})');
+    print('[HEARTBEAT-CLIENT] 累计待上报秒数: $_pendingSeconds 秒');
+
+    // 服务端对单次 seconds 有 65 秒上限限制，防止异常数据
+    if (_pendingSeconds > 60) {
+      _pendingSeconds = 60;
+    }
+
+    final bytesToSend = _pendingTrafficBytes;
+    final secondsToSend = _pendingSeconds;
+    
+    print('[HEARTBEAT-CLIENT] 准备上报: $bytesToSend bytes (${_formatBytes(bytesToSend)}), $secondsToSend 秒');
+
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15);
     try {
@@ -269,23 +306,94 @@ class _VpnHomePageState extends State<VpnHomePage> {
           .timeout(const Duration(seconds: 15));
       request.headers.contentType = ContentType.json;
       request.headers.set('Authorization', 'Bearer $token');
-      request.write(jsonEncode({'seconds': seconds}));
+      request.write(jsonEncode({
+        'seconds': secondsToSend,
+        'traffic_bytes': bytesToSend,
+      }));
       final response = await request.close().timeout(const Duration(seconds: 15));
-      await response.drain<void>();
+      final body = await response.transform(utf8.decoder).join();
       if (response.statusCode == 401) {
         await _handleTokenExpired();
         return;
       }
-      // 心跳成功，重置失败计数
-      _heartbeatFailCount = 0;
-      await _loadAppData();
+      
+      bool serverConfirmed = false;
+      Map<String, dynamic>? data;
+
+      try {
+        final decoded = jsonDecode(body);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['code'] == 0 || decoded['code'] == 200) {
+            serverConfirmed = true;
+          }
+          data = decoded['data'] as Map<String, dynamic>?;
+        }
+      } catch (e) {
+        print('[HEARTBEAT] jsonDecode error: $e');
+      }
+
+      if (response.statusCode >= 200 && response.statusCode < 300 && serverConfirmed) {
+        print('[HEARTBEAT-CLIENT] ✅ 服务端确认成功');
+        // 心跳被服务端明确接收并处理成功，扣除刚刚成功上报的那部分缓存数据
+        _pendingTrafficBytes -= bytesToSend;
+        _pendingSeconds -= secondsToSend;
+        
+        print('[HEARTBEAT-CLIENT] 扣除已上报数据后，剩余待上报: $_pendingTrafficBytes bytes, $_pendingSeconds 秒');
+        
+        // 兜底防御，防止异常变负
+        if (_pendingTrafficBytes < 0) _pendingTrafficBytes = 0;
+        if (_pendingSeconds < 0) _pendingSeconds = 0;
+        
+        _heartbeatFailCount = 0;
+      } else {
+        print('[HEARTBEAT-CLIENT] ❌ 服务端返回失败，保留待上报数据');
+        // 服务端返回业务错误或无法解析，视为失败，保留 pending 数据
+        _heartbeatFailCount++;
+      }
+
+      // 解析心跳响应，更新流量和时长状态
+      if (data != null) {
+        final trafficRemaining = data['traffic_remaining']?.toString();
+        final remainingSeconds = int.tryParse(data['remaining_seconds']?.toString() ?? '');
+        final remainingTimeText = data['remaining_time_text']?.toString();
+        final trafficExhausted = data['traffic_exhausted'] == true;
+
+        print('[HEARTBEAT-CLIENT] 服务端返回剩余流量: $trafficRemaining');
+        print('[HEARTBEAT-CLIENT] 服务端返回剩余时间: $remainingTimeText');
+        print('[HEARTBEAT-CLIENT] 流量是否耗尽: $trafficExhausted');
+
+        if (mounted) {
+          setState(() {
+            _appStatus = AppStatus(
+              planLevel: _appStatus.planLevel,
+              remainingSeconds: remainingSeconds ?? _appStatus.remainingSeconds,
+              remainingTimeText: remainingTimeText ?? _appStatus.remainingTimeText,
+              trafficRemaining: trafficRemaining ?? _appStatus.trafficRemaining,
+            );
+          });
+        }
+
+          // 流量耗尽，断开 VPN
+          if (trafficExhausted && _isConnected) {
+            print('[HEARTBEAT-CLIENT] ⚠️ 流量已耗尽，断开VPN');
+            await _disconnect();
+            if (mounted) {
+              setState(() => _message = '流量已用完，请购买套餐');
+            }
+            _openPurchasePage();
+            return;
+          }
+        }
+
+      print('[HEARTBEAT-CLIENT] ========== 心跳处理完成 ==========');
+
       if (_appStatus.remainingSeconds <= 0 && !_hasActivePlan) {
         await _disconnect();
       }
     } catch (e) {
       // 心跳失败，增加失败计数
       _heartbeatFailCount++;
-      print('[HEARTBEAT] failed (count: $_heartbeatFailCount): $e');
+      print('[HEARTBEAT-CLIENT] ❌ 心跳失败 (count: $_heartbeatFailCount): $e');
       
       // 心跳失败不断开VPN，继续重试
       // VPN连接状态由系统层面管理，心跳只用于统计使用时长
@@ -310,6 +418,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
     final days = hours ~/ 24;
     final restHours = hours % 24;
     return restHours > 0 ? '$days天 $restHours小时' : '$days天';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(3)} GB';
   }
 
   Future<void> _loadNodes() async {
@@ -537,6 +652,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
     if (!mounted) return;
 
+    // 清空未上报流量缓存
+    _pendingTrafficBytes = 0;
+    _pendingSeconds = 0;
+
     // 关闭 Drawer
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
@@ -655,13 +774,54 @@ class _VpnHomePageState extends State<VpnHomePage> {
     );
   }
 
+  String _calculateOptimisticTraffic(String backendText, int pendingBytes) {
+    if (pendingBytes <= 0) return backendText;
+    if (backendText == '不限流量' || backendText == '无限流量') return backendText;
+    
+    try {
+      final parts = backendText.trim().split(' ');
+      if (parts.length >= 2) {
+        final val = double.tryParse(parts[0]);
+        if (val == null) return backendText;
+        
+        final unit = parts[1].toUpperCase();
+        
+        double bytes = 0;
+        if (unit == 'GB') {
+          bytes = val * 1024 * 1024 * 1024;
+        } else if (unit == 'MB') {
+          bytes = val * 1024 * 1024;
+        } else if (unit == 'KB') {
+          bytes = val * 1024;
+        } else {
+          return backendText;
+        }
+        
+        double newBytes = bytes - pendingBytes;
+        if (newBytes < 0) newBytes = 0;
+        
+        if (newBytes < 1024 * 1024 * 1024) {
+           return '${(newBytes / 1024 / 1024).toStringAsFixed(2)} MB';
+        } else {
+           return '${(newBytes / 1024 / 1024 / 1024).toStringAsFixed(3)} GB';
+        }
+      }
+    } catch (e) {
+       // fallback
+    }
+    return backendText;
+  }
+
   String get _displayTrafficRemaining {
     final text = _appStatus.trafficRemaining.trim();
     final isFreeTrial = _appStatus.planLevel == '免费体验';
     if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
       return '无限流量';
     }
-    return _appStatus.trafficRemaining;
+    
+    // 乐观更新：减去已出账但还没发给服务端的流量（排队的 + 本次连接还没消费的）
+    final totalPending = _pendingTrafficBytes + VpnNativeChannel.unconsumedBytes;
+    return _calculateOptimisticTraffic(text, totalPending);
   }
 
   @override

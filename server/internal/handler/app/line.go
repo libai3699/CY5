@@ -23,6 +23,7 @@ type publicLine struct {
 	Region      string `json:"region"`
 	Protocol    string `json:"protocol"`
 	Address     string `json:"address"`
+	RawURI      string `json:"raw_uri"`
 	Description string `json:"description"`
 }
 
@@ -38,6 +39,7 @@ func GetPublicDefaultLine(c *gin.Context) {
 		Region:      line.Region,
 		Protocol:    line.Protocol,
 		Address:     line.Address,
+		RawURI:      line.RawURI,
 		Description: line.Description,
 	})
 }

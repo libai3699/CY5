@@ -20,13 +20,11 @@ class _NoticeBarState extends State<NoticeBar> {
   List<String> _notices = [];
   int _current = 0;
   Timer? _timer;
-  WebSocket? _socket;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _connectSocket();
   }
 
   @override
@@ -34,14 +32,12 @@ class _NoticeBarState extends State<NoticeBar> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.token != widget.token) {
       _load();
-      _connectSocket();
     }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _socket?.close();
     super.dispose();
   }
 
@@ -50,11 +46,14 @@ class _NoticeBarState extends State<NoticeBar> {
     final url = widget.token == null ? kNoticesApiUrl : kUserNoticesApiUrl;
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      final request = await client
+          .getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 8));
       if (widget.token != null) {
         request.headers.set('Authorization', 'Bearer ${widget.token}');
       }
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response =
+          await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
       if (response.statusCode < 200 || response.statusCode >= 300) return;
 
@@ -84,54 +83,6 @@ class _NoticeBarState extends State<NoticeBar> {
     }
   }
 
-  Future<void> _connectSocket() async {
-    await _socket?.close();
-    _socket = null;
-    final token = widget.token;
-    if (token == null || token.isEmpty) return;
-
-    try {
-      final base = Uri.parse(kApiBaseUrl);
-      final uri = base.replace(
-        scheme: base.scheme == 'https' ? 'wss' : 'ws',
-        path: '/api/public/ws/notices',
-        queryParameters: {'token': token},
-      );
-      print('[WS] connecting: $uri');
-      final socket = await WebSocket.connect(uri.toString());
-      print('[WS] connected');
-      _socket = socket;
-      socket.listen(
-        (data) {
-          print('[WS] received: $data');
-          try {
-            final decoded = jsonDecode(data.toString());
-            final event = decoded?['event']?.toString();
-            if (event == 'status_update') {
-              final msg = decoded?['data']?['msg']?.toString() ?? '套餐已更新';
-              print('[WS] status_update msg: $msg');
-              widget.onStatusUpdate?.call(msg);
-            }
-          } catch (e) {
-            print('[WS] parse error: $e');
-          }
-          _load();
-        },
-        onDone: () {
-          print('[WS] closed');
-          if (mounted && identical(_socket, socket)) _socket = null;
-        },
-        onError: (e) {
-          print('[WS] error: $e');
-          if (mounted && identical(_socket, socket)) _socket = null;
-        },
-        cancelOnError: true,
-      );
-    } catch (e) {
-      print('[WS] connect failed: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_notices.isEmpty) return const SizedBox.shrink();
@@ -146,7 +97,8 @@ class _NoticeBarState extends State<NoticeBar> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.campaign_rounded, color: Color(0xFFE11D48), size: 18),
+          const Icon(Icons.campaign_rounded,
+              color: Color(0xFFE11D48), size: 18),
           const SizedBox(width: 10),
           Expanded(
             child: ClipRect(
@@ -164,7 +116,8 @@ class _NoticeBarState extends State<NoticeBar> {
                   final offset = Tween<Offset>(
                     begin: Offset(0, isIncoming ? 1 : -1),
                     end: Offset.zero,
-                  ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+                  ).animate(CurvedAnimation(
+                      parent: animation, curve: Curves.easeOutCubic));
                   return SlideTransition(position: offset, child: child);
                 },
                 child: Align(
@@ -175,7 +128,8 @@ class _NoticeBarState extends State<NoticeBar> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.left,
-                    style: const TextStyle(color: Color(0xFF881337), fontSize: 13),
+                    style:
+                        const TextStyle(color: Color(0xFF881337), fontSize: 13),
                   ),
                 ),
               ),

@@ -56,6 +56,14 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	// 同一设备只有第一个账号享有免费体验时长
+	var existingCount int64
+	database.DB.Model(&model.User{}).Where("device_id = ?", req.DeviceID).Count(&existingCount)
+	freeLimitSeconds := 0
+	if existingCount == 0 {
+		freeLimitSeconds = 2700 // 45 分钟，仅首个账号
+	}
+
 	user := model.User{
 		Username:         req.Username,
 		Password:         string(hash),
@@ -63,7 +71,7 @@ func Register(c *gin.Context) {
 		DeviceID:         req.DeviceID,
 		Status:           1,
 		FreeUsedSeconds:  0,
-		FreeLimitSeconds: 2700,
+		FreeLimitSeconds: freeLimitSeconds,
 	}
 	if err := database.DB.Create(&user).Error; err != nil {
 		handler.Fail(c, 500, "注册失败")
