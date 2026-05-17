@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../utils/platform_utils.dart';
 import 'data/auth_service.dart';
 
 class LoginDevicesPage extends StatefulWidget {
@@ -59,30 +60,37 @@ class _LoginDevicesPageState extends State<LoginDevicesPage> {
         elevation: 0,
         title: const Text('已登录设备'),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE11D48)))
-          : _message != null
-              ? Center(child: Text(_message!, style: const TextStyle(color: Color(0xFF881337))))
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _devices.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final device = _devices[index];
-                    return ListTile(
-                      tileColor: Colors.white.withOpacity(0.78),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      leading: const Icon(Icons.devices_rounded, color: Color(0xFFE11D48)),
-                      title: Text(device.name, style: const TextStyle(color: Color(0xFF881337), fontWeight: FontWeight.w700)),
-                      subtitle: Text('设备ID：${device.displayId}\n最后在线：${device.lastSeenAt.isEmpty ? '未知' : device.lastSeenAt}'),
-                      trailing: IconButton(
-                        tooltip: '移除设备',
-                        icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE11D48)),
-                        onPressed: () => _remove(device),
-                      ),
-                    );
-                  },
-                ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: PlatformUtils.getContentMaxWidth() ?? double.infinity,
+          ),
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFFE11D48)))
+              : _message != null
+                  ? Center(child: Text(_message!, style: const TextStyle(color: Color(0xFF881337))))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _devices.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final device = _devices[index];
+                        return ListTile(
+                          tileColor: Colors.white.withOpacity(0.78),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          leading: const Icon(Icons.devices_rounded, color: Color(0xFFE11D48)),
+                          title: Text(device.name, style: const TextStyle(color: Color(0xFF881337), fontWeight: FontWeight.w700)),
+                          subtitle: Text('设备ID：${device.displayId}\n最后在线：${device.lastSeenAt.isEmpty ? '未知' : device.lastSeenAt}'),
+                          trailing: IconButton(
+                            tooltip: '移除设备',
+                            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE11D48)),
+                            onPressed: () => _remove(device),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ),
     );
   }
 }

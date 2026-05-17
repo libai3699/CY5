@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../utils/platform_utils.dart';
 import 'components/common_page_top_bar.dart';
 import 'data/api_config.dart';
 import 'data/auth_service.dart';
@@ -118,16 +119,23 @@ class _NoticesPageState extends State<NoticesPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF1F2),
       body: SafeArea(
-        child: Column(
-          children: [
-            CommonPageTopBar(
-              title: '消息通知',
-              showRightButton: _token != null && _unreadCount > 0,
-              rightIcon: Icons.done_all_rounded,
-              onRightPressed: _markAllRead,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: PlatformUtils.getContentMaxWidth() ?? double.infinity,
             ),
-            Expanded(child: _buildBody()),
-          ],
+            child: Column(
+              children: [
+                CommonPageTopBar(
+                  title: '消息通知',
+                  showRightButton: _token != null && _unreadCount > 0,
+                  rightIcon: Icons.done_all_rounded,
+                  onRightPressed: _markAllRead,
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          ),
         ),
       ),
     );

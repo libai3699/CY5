@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <application
         android:label="${appLabel}"
@@ -11,7 +12,7 @@
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true">
         <activity
-            android:name=".MainActivity"
+            android:name="com.example.cy_vpn.MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
@@ -32,7 +33,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".SupportWebActivity"
+            android:name="com.example.cy_vpn.SupportWebActivity"
             android:exported="false" />
         <!-- V2ray module's V2rayVPNService and V2rayProxyService are auto-merged from the v2ray module manifest -->
         <meta-data

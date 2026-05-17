@@ -1,8 +1,11 @@
 package app
 
 import (
+	"crypto/rand"
+	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
+	"strings"
 	"time"
 
 	"cy5vpn/server/internal/database"
@@ -10,6 +13,7 @@ import (
 	"cy5vpn/server/internal/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type deviceRegisterReq struct {
@@ -27,6 +31,11 @@ func DeviceRegister(c *gin.Context) {
 		handler.Fail(c, 400, "参数错误")
 		return
 	}
+	req.DeviceID = strings.TrimSpace(req.DeviceID)
+	if req.DeviceID == "" || len(req.DeviceID) > 128 {
+		handler.Fail(c, 400, "设备ID无效")
+		return
+	}
 
 	now := time.Now()
 	ip := c.ClientIP()
@@ -34,30 +43,31 @@ func DeviceRegister(c *gin.Context) {
 	var device model.Device
 	result := database.DB.Where("device_id = ?", req.DeviceID).First(&device)
 
-	if result.Error != nil {
-		// 新设备，生成唯一 7 位展示 ID
-		displayID := generateUniqueDisplayID()
-		device = model.Device{
-			DeviceID:   req.DeviceID,
-			DisplayID:  displayID,
-			Brand:      req.Brand,
-			Model:      req.Model,
-			OSVersion:  req.OSVersion,
-			AppVersion: req.AppVersion,
-			LastIP:     ip,
-			LastSeenAt: &now,
-		}
-		database.DB.Create(&device)
-	} else {
+	if result.Error == nil {
 		// 已有设备，更新活跃信息
-		database.DB.Model(&device).Updates(map[string]interface{}{
+		if err := database.DB.Model(&device).Updates(map[string]interface{}{
 			"brand":        req.Brand,
 			"model":        req.Model,
 			"os_version":   req.OSVersion,
 			"app_version":  req.AppVersion,
 			"last_ip":      ip,
 			"last_seen_at": now,
-		})
+		}).Error; err != nil {
+			handler.Fail(c, 500, "设备更新失败")
+			return
+		}
+	} else if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		// 新设备，生成唯一 7 位展示 ID
+		var err error
+		device, err = createDeviceWithUniqueDisplayID(req, ip, now)
+		if err != nil {
+			fmt.Printf("[DEVICE] create failed device_id=%s err=%v\n", req.DeviceID, err)
+			handler.Fail(c, 500, "设备注册失败")
+			return
+		}
+	} else {
+		handler.Fail(c, 500, "设备查询失败")
+		return
 	}
 
 	handler.OK(c, gin.H{
@@ -66,11 +76,36 @@ func DeviceRegister(c *gin.Context) {
 	})
 }
 
+func createDeviceWithUniqueDisplayID(req deviceRegisterReq, ip string, now time.Time) (model.Device, error) {
+	var lastErr error
+	for i := 0; i < 5; i++ {
+		device := model.Device{
+			DeviceID:   req.DeviceID,
+			DisplayID:  generateUniqueDisplayID(),
+			Brand:      req.Brand,
+			Model:      req.Model,
+			OSVersion:  req.OSVersion,
+			AppVersion: req.AppVersion,
+			LastIP:     ip,
+			LastSeenAt: &now,
+		}
+		if err := database.DB.Create(&device).Error; err != nil {
+			lastErr = err
+			continue
+		}
+		return device, nil
+	}
+	return model.Device{}, lastErr
+}
+
 // generateUniqueDisplayID 生成唯一的 7 位数字展示 ID（1000000~9999999）
 func generateUniqueDisplayID() string {
 	for {
-		n := 1_000_000 + rand.Intn(9_000_000)
-		id := fmt.Sprintf("%07d", n)
+		n, err := rand.Int(rand.Reader, big.NewInt(9_000_000))
+		if err != nil {
+			continue
+		}
+		id := fmt.Sprintf("%07d", n.Int64()+1_000_000)
 		var count int64
 		database.DB.Model(&model.Device{}).Where("display_id = ?", id).Count(&count)
 		if count == 0 {

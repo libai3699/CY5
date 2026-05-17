@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -13,48 +14,65 @@ import 'api_config.dart';
 class DeviceIdentity {
   const DeviceIdentity();
 
-  /// 获取稳定的设备 ID
-  /// - Android: androidId（卸载重装不变，恢复出厂设置才变）
-  /// - iOS: identifierForVendor（同一开发者账号下所有 App 共享）
-  /// - 其他/获取失败: 回退到本地文件持久化的随机 ID
   Future<String> getOrCreateDeviceId() async {
-    // 优先读取本地缓存（避免每次重复调用系统 API）
     final file = await _deviceFile();
+    final stableId = await _getSystemDeviceId();
+
     if (await file.exists()) {
-      final value = (await file.readAsString()).trim();
-      if (value.isNotEmpty) return value;
+      final cachedValue = (await file.readAsString()).trim();
+      if (cachedValue.isNotEmpty) {
+        if (Platform.isAndroid &&
+            stableId != null &&
+            stableId.isNotEmpty &&
+            cachedValue != stableId &&
+            _isLegacyAndroidBuildFingerprintId(cachedValue)) {
+          debugPrint(
+            '[DEVICE] Android cached build fingerprint device_id migrated to android_id: $stableId',
+          );
+          await file.writeAsString(stableId, flush: true);
+          return stableId;
+        }
+
+        if (Platform.isWindows &&
+            stableId != null &&
+            stableId.isNotEmpty &&
+            cachedValue != stableId) {
+          debugPrint(
+            '[DEVICE] Windows cached device_id mismatch, rewriting to system id: $stableId',
+          );
+          await file.writeAsString(stableId, flush: true);
+          return stableId;
+        }
+
+        debugPrint('[DEVICE] Using cached device_id: $cachedValue');
+        return cachedValue;
+      }
     }
 
-    // 尝试获取系统级稳定 ID
-    String? stableId = await _getSystemDeviceId();
     if (stableId != null && stableId.isNotEmpty) {
-      await file.writeAsString(stableId);
+      debugPrint('[DEVICE] Got system device_id: $stableId');
+      await file.writeAsString(stableId, flush: true);
       return stableId;
     }
 
-    // 降级方案：生成随机 ID 并持久化到本地文件
     final id = _newDeviceId();
-    await file.writeAsString(id);
+    debugPrint('[DEVICE] Generated random device_id: $id');
+    await file.writeAsString(id, flush: true);
     return id;
   }
 
-  /// 从系统 API 获取设备标识
   Future<String?> _getSystemDeviceId() async {
     try {
       final deviceInfo = DeviceInfoPlugin();
       if (Platform.isAndroid) {
-        final androidInfo = await deviceInfo.androidInfo;
-        // device_info_plus 10.x 未暴露 ANDROID_ID 字段
-        // 用 fingerprint（系统构建指纹）作为稳定设备标识
-        // 格式：brand/product/device:version/id/incremental:type/tags
-        // 同一台设备卸载重装不变，系统 OTA 升级后可能变化（可接受）
-        final fp = androidInfo.fingerprint.trim();
-        if (fp.isNotEmpty && fp != 'unknown') {
-          return 'a_$fp';
+        final androidId = await _getAndroidIdFromNative();
+        if (_isUsableSystemId(androidId)) {
+          return 'a_$androidId';
         }
-        // fingerprint 不可用时降级用 serialNumber
+
+        final androidInfo = await deviceInfo.androidInfo;
         final serial = androidInfo.serialNumber.trim();
-        if (serial.isNotEmpty && serial != 'unknown') {
+        if (_isUsableSystemId(serial)) {
           return 'a_$serial';
         }
       } else if (Platform.isIOS) {
@@ -63,6 +81,30 @@ class DeviceIdentity {
         if (id != null && id.isNotEmpty) {
           return 'i_$id';
         }
+      } else if (Platform.isWindows) {
+        try {
+          final regResult = await Process.run('reg', [
+            'query',
+            r'HKLM\SOFTWARE\Microsoft\Cryptography',
+            '/v',
+            'MachineGuid',
+          ]);
+          if (regResult.exitCode == 0) {
+            final output = regResult.stdout.toString();
+            final match =
+                RegExp(r'MachineGuid\s+REG_SZ\s+(\S+)').firstMatch(output);
+            final guid = match?.group(1)?.trim();
+            if (guid != null && guid.isNotEmpty) {
+              debugPrint('[DEVICE] Windows MachineGuid: $guid');
+              return 'w_$guid';
+            }
+          }
+          debugPrint(
+            '[DEVICE] Windows reg query failed: exit=${regResult.exitCode}',
+          );
+        } catch (e) {
+          debugPrint('[DEVICE] Windows MachineGuid error: $e');
+        }
       }
     } catch (e) {
       debugPrint('[DEVICE] getSystemDeviceId error: $e');
@@ -70,7 +112,32 @@ class DeviceIdentity {
     return null;
   }
 
-  /// 获取服务端分配的 7 位展示 ID（本地缓存）
+  Future<String?> _getAndroidIdFromNative() async {
+    try {
+      const channel = MethodChannel('9.9/native');
+      final id = await channel.invokeMethod<String>('getAndroidId');
+      return id?.trim();
+    } catch (e) {
+      debugPrint('[DEVICE] Android native id error: $e');
+      return null;
+    }
+  }
+
+  bool _isUsableSystemId(String? value) {
+    final id = value?.trim();
+    return id != null &&
+        id.isNotEmpty &&
+        id != 'unknown' &&
+        id != '9774d56d682e549c' &&
+        id.toLowerCase() != 'null';
+  }
+
+  bool _isLegacyAndroidBuildFingerprintId(String value) {
+    if (!value.startsWith('a_')) return false;
+    final raw = value.substring(2);
+    return raw.contains('/') || raw.contains(':') || raw.length > 64;
+  }
+
   Future<String> getDisplayId() async {
     final file = await _displayIdFile();
     if (await file.exists()) {
@@ -80,7 +147,6 @@ class DeviceIdentity {
     return '';
   }
 
-  /// 向服务端注册设备，返回 display_id（7 位数字）
   Future<String> register() async {
     final deviceId = await getOrCreateDeviceId();
     debugPrint('[DEVICE] register device_id: $deviceId');
@@ -102,7 +168,8 @@ class DeviceIdentity {
           await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
       debugPrint(
-          '[DEVICE] register status: ${response.statusCode}, body: $body');
+        '[DEVICE] register status: ${response.statusCode}, body: $body',
+      );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(body);
@@ -113,7 +180,8 @@ class DeviceIdentity {
         }
       } else {
         debugPrint(
-            '[DEVICE] register failed with status ${response.statusCode}');
+          '[DEVICE] register failed with status ${response.statusCode}',
+        );
       }
     } catch (e) {
       debugPrint('[DEVICE] register error: $e');
@@ -121,13 +189,12 @@ class DeviceIdentity {
       client.close(force: true);
     }
 
-    // 注册失败时返回本地缓存的 display_id（如果有）
     return getDisplayId();
   }
 
   Future<void> _saveDisplayId(String displayId) async {
     final file = await _displayIdFile();
-    await file.writeAsString(displayId);
+    await file.writeAsString(displayId, flush: true);
   }
 
   Future<File> _deviceFile() async {

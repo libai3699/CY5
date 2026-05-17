@@ -1,6 +1,8 @@
 package app
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 type registerReq struct {
@@ -31,7 +34,8 @@ func Register(c *gin.Context) {
 		handler.Fail(c, 400, "参数错误: "+err.Error())
 		return
 	}
-	if !usernameLetterRE.MatchString(req.Username) || !usernameDigitRE.MatchString(req.Username) {
+	if !usernameLetterRE.MatchString(req.Username) ||
+		!usernameDigitRE.MatchString(req.Username) {
 		handler.Fail(c, 400, "账号至少6位，且必须同时包含字母和数字")
 		return
 	}
@@ -56,12 +60,11 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 同一设备只有第一个账号享有免费体验时长
 	var existingCount int64
 	database.DB.Model(&model.User{}).Where("device_id = ?", req.DeviceID).Count(&existingCount)
 	freeLimitSeconds := 0
 	if existingCount == 0 {
-		freeLimitSeconds = 2700 // 45 分钟，仅首个账号
+		freeLimitSeconds = 2700
 	}
 
 	user := model.User{
@@ -77,7 +80,12 @@ func Register(c *gin.Context) {
 		handler.Fail(c, 500, "注册失败")
 		return
 	}
-	updateDeviceUser(req.DeviceID, user.ID)
+	if err := bindDeviceToUser(req.DeviceID, user.ID); err != nil {
+		fmt.Printf("[AUTH_BIND] register bind failed user_id=%d device_id=%s err=%v\n",
+			user.ID, req.DeviceID, err)
+		handler.Fail(c, 500, "设备绑定失败")
+		return
+	}
 
 	token, err := config.GenerateUserToken(user.ID, user.DeviceID)
 	if err != nil {
@@ -133,9 +141,19 @@ func Login(c *gin.Context) {
 		}
 		updates["device_id"] = req.DeviceID
 	}
-	database.DB.Model(&user).Updates(updates)
+	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
+		fmt.Printf("[AUTH_BIND] user update failed user_id=%d device_id=%s err=%v\n",
+			user.ID, req.DeviceID, err)
+		handler.Fail(c, 500, "登录失败")
+		return
+	}
 	if req.DeviceID != "" {
-		updateDeviceUser(req.DeviceID, user.ID)
+		if err := bindDeviceToUser(req.DeviceID, user.ID); err != nil {
+			fmt.Printf("[AUTH_BIND] login bind failed user_id=%d device_id=%s err=%v\n",
+				user.ID, req.DeviceID, err)
+			handler.Fail(c, 500, "设备绑定失败")
+			return
+		}
 		user.DeviceID = req.DeviceID
 	}
 
@@ -153,26 +171,63 @@ func Login(c *gin.Context) {
 	})
 }
 
-func updateDeviceUser(deviceID string, userID uint64) {
+func bindDeviceToUser(deviceID string, userID uint64) error {
 	if deviceID == "" {
-		return
+		return nil
 	}
-	database.DB.Model(&model.Device{}).Where("device_id = ?", deviceID).Update("user_id", userID)
+
+	now := time.Now()
+	var device model.Device
+	err := database.DB.Where("device_id = ?", deviceID).First(&device).Error
+	switch {
+	case err == nil:
+		fmt.Printf("[AUTH_BIND] update existing device_id=%s device_row_id=%d user_id=%d old_user_id=%v\n",
+			deviceID, device.ID, userID, device.UserID)
+		if err := database.DB.Model(&device).Updates(map[string]interface{}{
+			"user_id":      userID,
+			"last_seen_at": &now,
+		}).Error; err != nil {
+			return err
+		}
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		device = model.Device{
+			DeviceID:   deviceID,
+			DisplayID:  generateUniqueDisplayID(),
+			UserID:     &userID,
+			LastSeenAt: &now,
+		}
+		fmt.Printf("[AUTH_BIND] create device_id=%s user_id=%d display_id=%s\n",
+			deviceID, userID, device.DisplayID)
+		if err := database.DB.Create(&device).Error; err != nil {
+			return err
+		}
+	default:
+		return err
+	}
+
+	var count int64
+	if err := database.DB.Model(&model.Device{}).
+		Where("device_id = ? AND user_id = ?", deviceID, userID).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	fmt.Printf("[AUTH_BIND] verify device_id=%s user_id=%d count=%d\n", deviceID, userID, count)
+	if count == 0 {
+		return fmt.Errorf("device binding verify failed for device_id=%s user_id=%d", deviceID, userID)
+	}
+	return nil
 }
 
 func canLoginDevice(user model.User, deviceID string) bool {
-	// 1. 该设备已绑定该用户，直接放行
 	var bound model.Device
 	if err := database.DB.Where("device_id = ? AND user_id = ?", deviceID, user.ID).First(&bound).Error; err == nil {
 		return true
 	}
 
-	// 2. 检查用户主设备字段匹配
 	if user.DeviceID == deviceID {
 		return true
 	}
 
-	// 3. 检查设备数量上限
 	maxDevices := 1
 	if user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now()) {
 		if user.CurrentPlanID != nil {
@@ -185,9 +240,7 @@ func canLoginDevice(user model.User, deviceID string) bool {
 
 	var count int64
 	database.DB.Model(&model.Device{}).Where("user_id = ?", user.ID).Count(&count)
-	// 允许替换：设备数已满时，允许登录（会替换旧设备绑定）
 	if count >= int64(maxDevices) {
-		// 删除该用户最旧的设备绑定，腾出位置
 		var oldest model.Device
 		if err := database.DB.Where("user_id = ?", user.ID).Order("updated_at asc").First(&oldest).Error; err == nil {
 			database.DB.Delete(&oldest)

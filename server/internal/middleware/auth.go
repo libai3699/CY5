@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -18,7 +19,6 @@ type UserClaims struct {
 	jwt.RegisteredClaims
 }
 
-// AuthRequired 前台用户 JWT 验证
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := extractToken(c)
@@ -32,17 +32,31 @@ func AuthRequired() gin.HandlerFunc {
 			return []byte(config.App.JWTSecret), nil
 		})
 		if err != nil || !t.Valid {
+			fmt.Printf("[AUTH_MW] invalid token err=%v\n", err)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "token 无效或已过期"})
 			return
 		}
+
 		var user model.User
-		if err := database.DB.Select("id, status").First(&user, claims.UserID).Error; err != nil || user.Status == 0 {
+		if err := database.DB.Select("id, status, device_id").First(&user, claims.UserID).Error; err != nil || user.Status == 0 {
+			fmt.Printf("[AUTH_MW] user lookup failed user_id=%d device_id=%s err=%v status=%d\n",
+				claims.UserID, claims.DeviceID, err, user.Status)
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "账号已禁用或不存在"})
 			return
 		}
+
 		if claims.DeviceID != "" {
 			var count int64
-			database.DB.Model(&model.Device{}).Where("device_id = ? AND user_id = ?", claims.DeviceID, claims.UserID).Count(&count)
+			query := database.DB.Model(&model.Device{}).
+				Where("device_id = ? AND user_id = ?", claims.DeviceID, claims.UserID)
+			if err := query.Count(&count).Error; err != nil {
+				fmt.Printf("[AUTH_MW] device count failed user_id=%d device_id=%s err=%v\n",
+					claims.UserID, claims.DeviceID, err)
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "设备状态校验失败"})
+				return
+			}
+			fmt.Printf("[AUTH_MW] verify user_id=%d claim_device_id=%s user_device_id=%s count=%d path=%s\n",
+				claims.UserID, claims.DeviceID, user.DeviceID, count, c.Request.URL.Path)
 			if count == 0 {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "设备已退出，请重新登录"})
 				return

@@ -1,6 +1,8 @@
 export interface DownloadConfig {
   vpn_apk: string;
   acc_apk: string;
+  vpn_exe: string;
+  acc_exe: string;
   vpn_version: string;
   acc_version: string;
   contact_wechat: string;
@@ -10,4 +12,4 @@ export interface DownloadConfig {
   contact_email: string;
 }
 
-export type Lang = 'zh' | 'en';
+export type Lang = "zh" | "en";

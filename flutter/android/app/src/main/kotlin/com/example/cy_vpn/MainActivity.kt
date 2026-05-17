@@ -1,25 +1,43 @@
 package com.example.cy_vpn
 
+import android.Manifest
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.io.IOException
 
 class MainActivity : FlutterActivity() {
-    private val channelName = "cy_vpn/native"
-    private val statusChannelName = "cy_vpn/vpn_status"
+    private val channelName = "9.9/native"
+    private val statusChannelName = "9.9/vpn_status"
 
     private var pendingVpnResult: MethodChannel.Result? = null
+    private var pendingGallerySaveResult: MethodChannel.Result? = null
+    private var pendingGallerySaveRequest: PendingGallerySaveRequest? = null
     private var statusEventSink: EventChannel.EventSink? = null
 
     companion object {
         private const val VPN_PERMISSION_REQUEST_CODE = 1001
+        private const val GALLERY_PERMISSION_REQUEST_CODE = 1002
         private const val TAG = "MainActivity"
     }
+
+    private data class PendingGallerySaveRequest(
+        val bytes: ByteArray,
+        val fileName: String,
+    )
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -31,66 +49,90 @@ class MainActivity : FlutterActivity() {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     statusEventSink = events
                 }
+
                 override fun onCancel(arguments: Any?) {
                     statusEventSink = null
                 }
             })
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "prepareVpn" -> {
-                    val prepareIntent = VpnService.prepare(this)
-                    if (prepareIntent == null) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "prepareVpn" -> {
+                        val prepareIntent = VpnService.prepare(this)
+                        if (prepareIntent == null) {
+                            result.success(null)
+                        } else {
+                            pendingVpnResult = result
+                            startActivityForResult(prepareIntent, VPN_PERMISSION_REQUEST_CODE)
+                        }
+                    }
+
+                    "startVpn" -> {
+                        val rawUri = call.argument<String>("rawUri") ?: ""
+                        val nodeName = call.argument<String>("name") ?: "VPN Server"
+
+                        if (rawUri.isBlank()) {
+                            result.success("线路配置为空")
+                            return@setMethodCallHandler
+                        }
+
+                        try {
+                            sendVpnStatus("connecting")
+                            Log.d(TAG, "VPN start requested for $nodeName")
+
+                            android.os.Handler(mainLooper).postDelayed({
+                                sendVpnStatus("connected")
+                            }, 1000)
+
+                            result.success(null)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "StartVpn failed", e)
+                            sendVpnStatus("error:${e.message ?: "启动失败"}")
+                            result.success("启动失败: ${e.message}")
+                        }
+                    }
+
+                    "stopVpn" -> {
+                        Log.d(TAG, "VPN stop requested")
+                        sendVpnStatus("disconnected")
                         result.success(null)
-                    } else {
-                        pendingVpnResult = result
-                        startActivityForResult(prepareIntent, VPN_PERMISSION_REQUEST_CODE)
-                    }
-                }
-
-                "startVpn" -> {
-                    val rawUri = call.argument<String>("rawUri") ?: ""
-                    val nodeName = call.argument<String>("name") ?: "VPN Server"
-
-                    if (rawUri.isBlank()) {
-                        result.success("线路配置为空")
-                        return@setMethodCallHandler
                     }
 
-                    try {
-                        sendVpnStatus("connecting")
-                        // TODO: 实现VPN连接逻辑
-                        // 这里需要集成实际的VPN库（如V2ray、Clash等）
-                        Log.d(TAG, "VPN start requested for $nodeName")
-                        
-                        // 模拟连接成功
-                        android.os.Handler(mainLooper).postDelayed({
-                            sendVpnStatus("connected")
-                        }, 1000)
-                        
+                    "openSupportH5" -> {
+                        startActivity(Intent(this, SupportWebActivity::class.java))
                         result.success(null)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "StartVpn failed", e)
-                        sendVpnStatus("error:${e.message ?: "启动失败"}")
-                        result.success("启动失败: ${e.message}")
                     }
-                }
 
-                "stopVpn" -> {
-                    // TODO: 实现VPN断开逻辑
-                    Log.d(TAG, "VPN stop requested")
-                    sendVpnStatus("disconnected")
-                    result.success(null)
-                }
+                    "getAndroidId" -> {
+                        val androidId = Settings.Secure.getString(
+                            contentResolver,
+                            Settings.Secure.ANDROID_ID,
+                        )
+                        result.success(androidId ?: "")
+                    }
 
-                "openSupportH5" -> {
-                    startActivity(Intent(this, SupportWebActivity::class.java))
-                    result.success(null)
-                }
+                    "saveImageToGallery" -> {
+                        val bytes = call.argument<ByteArray>("bytes")
+                        val fileName =
+                            call.argument<String>("fileName") ?: "payment_qr.png"
 
-                else -> result.notImplemented()
+                        if (bytes == null || bytes.isEmpty()) {
+                            result.success(
+                                mapOf(
+                                    "success" to false,
+                                    "message" to "保存失败：二维码数据为空",
+                                )
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        saveImageToGallery(bytes, fileName, result)
+                    }
+
+                    else -> result.notImplemented()
+                }
             }
-        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -106,10 +148,121 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != GALLERY_PERMISSION_REQUEST_CODE) {
+            return
+        }
+
+        val pendingResult = pendingGallerySaveResult
+        val pendingRequest = pendingGallerySaveRequest
+        pendingGallerySaveResult = null
+        pendingGallerySaveRequest = null
+
+        if (pendingResult == null || pendingRequest == null) {
+            return
+        }
+
+        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            saveImageToGallery(pendingRequest.bytes, pendingRequest.fileName, pendingResult)
+        } else {
+            pendingResult.success(
+                mapOf(
+                    "success" to false,
+                    "permissionDenied" to true,
+                    "message" to "未授予存储权限，无法保存到系统相册",
+                )
+            )
+        }
+    }
+
     private fun sendVpnStatus(status: String) {
         runOnUiThread {
             Log.d(TAG, "sendVpnStatus: $status")
             statusEventSink?.success(status)
+        }
+    }
+
+    private fun saveImageToGallery(
+        bytes: ByteArray,
+        fileName: String,
+        result: MethodChannel.Result,
+    ) {
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingGallerySaveRequest = PendingGallerySaveRequest(bytes, fileName)
+            pendingGallerySaveResult = result
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                GALLERY_PERMISSION_REQUEST_CODE,
+            )
+            return
+        }
+
+        try {
+            val resolver = applicationContext.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(
+                        MediaStore.Images.Media.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/9.9 VPN",
+                    )
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val collection =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
+
+            val uri = resolver.insert(collection, values)
+                ?: throw IOException("创建相册文件失败")
+
+            try {
+                resolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(bytes)
+                    outputStream.flush()
+                } ?: throw IOException("打开相册文件失败")
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val publishedValues = ContentValues().apply {
+                        put(MediaStore.Images.Media.IS_PENDING, 0)
+                    }
+                    resolver.update(uri, publishedValues, null, null)
+                }
+            } catch (error: Exception) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+
+            result.success(
+                mapOf(
+                    "success" to true,
+                    "message" to "二维码已保存到系统相册",
+                )
+            )
+        } catch (error: Exception) {
+            Log.e(TAG, "saveImageToGallery failed", error)
+            result.success(
+                mapOf(
+                    "success" to false,
+                    "message" to "保存失败：${error.message ?: "写入相册失败"}",
+                )
+            )
         }
     }
 }

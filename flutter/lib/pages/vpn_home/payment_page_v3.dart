@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/platform/gallery_saver.dart';
+import '../../utils/platform_utils.dart';
 import 'components/common_page_top_bar.dart';
+import 'components/payment_page_windows_layout.dart';
 import 'contact_page.dart';
 import 'data/api_config.dart';
 
@@ -35,16 +38,16 @@ class PaymentPageV3 extends StatefulWidget {
 class _PaymentPageV3State extends State<PaymentPageV3> {
   String _selectedChannel = 'usdt'; // usdt, wechat, alipay
   String _selectedUsdtNetwork = 'bep20'; // trc20, bep20, erc20
-  
+
   List<_PaymentConfig> _usdtConfigs = [];
   List<_PaymentConfig> _wechatConfigs = [];
   List<_PaymentConfig> _alipayConfigs = [];
-  
+
   bool _loading = true;
   String? _error;
   double _usdtRate = 7.2;
   String? _orderNo;
-  
+
   // 生成带随机小数的金额作为标识
   late final double _paymentAmount;
   late double _usdtAmount;
@@ -59,7 +62,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     final millis = random.nextInt(3) + 1; // 1-3
     _paymentAmount = widget.totalPrice - (millis / 1000);
     _usdtAmount = _paymentAmount / _usdtRate; // 初始化 USDT 金额
-    
+
     _loadPaymentConfigs();
     _loadUsdtRate();
   }
@@ -119,10 +122,8 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                     c.type == 'usdt_bep20' ||
                     c.type == 'usdt_erc20')
                 .toList();
-            _wechatConfigs =
-                configs.where((c) => c.type == 'wechat').toList();
-            _alipayConfigs =
-                configs.where((c) => c.type == 'alipay').toList();
+            _wechatConfigs = configs.where((c) => c.type == 'wechat').toList();
+            _alipayConfigs = configs.where((c) => c.type == 'alipay').toList();
             _loading = false;
           });
         }
@@ -162,7 +163,8 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       }
       final bytes = await response.expand((chunk) => chunk).toList();
       final directory = await getApplicationDocumentsDirectory();
-      final fileName = 'payment_qr_${DateTime.now().millisecondsSinceEpoch}.png';
+      final fileName =
+          'payment_qr_${DateTime.now().millisecondsSinceEpoch}.png';
       final file = File('${directory.path}${Platform.pathSeparator}$fileName');
       await file.writeAsBytes(bytes, flush: true);
       messenger.showSnackBar(
@@ -183,6 +185,43 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     }
   }
 
+  Future<void> _saveQrCodeToGallery(String imageUrl) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('保存到相册'),
+            content: const Text('二维码将保存到系统相册。首次保存时，旧版 Android 可能会请求存储权限。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('继续保存'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await GallerySaver.saveQrCodeFromUrl(imageUrl);
+    if (!mounted) {
+      return;
+    }
+
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        duration: Duration(seconds: result.success ? 3 : 2),
+      ),
+    );
+  }
+
   void _openContact() {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => const ContactPage(),
@@ -192,23 +231,57 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   _PaymentConfig? get _currentUsdtConfig {
     return _usdtConfigs.firstWhere(
       (c) => c.type == 'usdt_$_selectedUsdtNetwork',
-      orElse: () => _usdtConfigs.isNotEmpty ? _usdtConfigs.first : _PaymentConfig.empty(),
+      orElse: () =>
+          _usdtConfigs.isNotEmpty ? _usdtConfigs.first : _PaymentConfig.empty(),
     );
+  }
+
+  _PaymentConfig? get _selectedPreviewConfig {
+    if (_selectedChannel == 'usdt') {
+      return _currentUsdtConfig;
+    }
+    if (_selectedChannel == 'wechat' && _wechatConfigs.isNotEmpty) {
+      return _wechatConfigs.first;
+    }
+    if (_selectedChannel == 'alipay' && _alipayConfigs.isNotEmpty) {
+      return _alipayConfigs.first;
+    }
+    return null;
+  }
+
+  String? get _selectedPreviewImageUrl => _selectedPreviewConfig?.qrCode;
+
+  String get _selectedPreviewTitle {
+    final config = _selectedPreviewConfig;
+    if (config != null && config.label.isNotEmpty) {
+      return '${config.label}二维码';
+    }
+    return '当前收款二维码';
   }
 
   @override
   Widget build(BuildContext context) {
+    final maxWidth = PlatformUtils.isWindows
+        ? 1320.0
+        : (PlatformUtils.getContentMaxWidth() ?? double.infinity);
     return Scaffold(
       backgroundColor: const Color(0xFFFFF1F2),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonPageTopBar(
-              title: '确认支付',
-              showRightButton: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: maxWidth,
             ),
-            Expanded(child: _buildBody()),
-          ],
+            child: Column(
+              children: [
+                const CommonPageTopBar(
+                  title: '确认支付',
+                  showRightButton: false,
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -242,6 +315,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
           ],
         ),
       );
+    }
+
+    if (PlatformUtils.isWindows) {
+      return _buildWindowsBody();
     }
 
     return Column(
@@ -336,7 +413,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                 ),
               ),
               const SizedBox(height: 12),
-              
+
               // 三个支付方式横向排列
               Row(
                 children: [
@@ -403,7 +480,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               // 微信/支付宝收款信息
               if (_selectedChannel == 'wechat' && _wechatConfigs.isNotEmpty)
                 _buildWechatAlipayInfo(_wechatConfigs.first),
-              
+
               if (_selectedChannel == 'alipay' && _alipayConfigs.isNotEmpty)
                 _buildWechatAlipayInfo(_alipayConfigs.first),
             ],
@@ -439,6 +516,181 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     );
   }
 
+  Widget _buildWindowsBody() {
+    return PaymentPageWindowsLayout(
+      leftContent: _buildWindowsLeftContentClean(),
+      previewTitle: _selectedPreviewTitleClean,
+      previewImageUrl: _selectedPreviewImageUrl,
+      onContactPressed: _openContact,
+    );
+  }
+
+  String get _selectedPreviewTitleClean {
+    final config = _selectedPreviewConfig;
+    if (config != null && config.label.isNotEmpty) {
+      return '${config.label}\u4e8c\u7ef4\u7801';
+    }
+    return '\u5f53\u524d\u6536\u6b3e\u4e8c\u7ef4\u7801';
+  }
+
+  Widget _buildWindowsLeftContentClean() {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '\u8ba2\u5355\u4fe1\u606f',
+                style: TextStyle(
+                  color: Color(0xFF881337),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildInfoRow('\u5957\u9910', widget.planName),
+              _buildInfoRow('\u5468\u671f', widget.cycle),
+              const Divider(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    '\u5e94\u4ed8\u91d1\u989d',
+                    style: TextStyle(
+                      color: Color(0xFF881337),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '\u00A5${_paymentAmount.toStringAsFixed(3)}',
+                        style: const TextStyle(
+                          color: Color(0xFFE11D48),
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      Text(
+                        '~ ${_usdtAmount.toStringAsFixed(3)} USDT',
+                        style: TextStyle(
+                          color: const Color(0xFF9F1239).withOpacity(0.7),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        '\u91d1\u989d\u542b\u968f\u673a\u5c0f\u6570\uff0c\u7528\u4e8e\u8bc6\u522b\u60a8\u7684\u4ed8\u6b3e',
+                        style: TextStyle(
+                          color: const Color(0xFF9F1239).withOpacity(0.5),
+                          fontSize: 10,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        '\u4ed8\u6b3e\u65f6\u8bf7\u5907\u6ce8\u597d\u767b\u5f55\u8d26\u53f7\uff0c\u65b9\u4fbf\u5230\u8d26\u5ba1\u6838',
+                        style: TextStyle(
+                          color: Color(0xFFE11D48),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+            children: [
+              const Text(
+                '\u9009\u62e9\u652f\u4ed8\u65b9\u5f0f',
+                style: TextStyle(
+                  color: Color(0xFF881337),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildChannelCard(
+                      'usdt',
+                      'USDT',
+                      'assets/images/contact/USDT.png',
+                      _usdtConfigs.isNotEmpty,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildChannelCard(
+                      'wechat',
+                      '\u5fae\u4fe1\u652f\u4ed8',
+                      'assets/images/contact/wechat.png',
+                      _wechatConfigs.isNotEmpty,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildChannelCard(
+                      'alipay',
+                      '\u652f\u4ed8\u5b9d',
+                      'assets/images/contact/alipay.png',
+                      _alipayConfigs.isNotEmpty,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (_selectedChannel == 'usdt' && _usdtConfigs.isNotEmpty) ...[
+                const Text(
+                  '\u9009\u62e9\u7f51\u7edc',
+                  style: TextStyle(
+                    color: Color(0xFF881337),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(child: _buildNetworkChip('trc20', 'TRC20')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildNetworkChip('bep20', 'BEP20')),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildNetworkChip('erc20', 'ERC20')),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _buildPaymentInfo(),
+              ],
+              if (_selectedChannel == 'wechat' && _wechatConfigs.isNotEmpty)
+                _buildWechatAlipayInfo(_wechatConfigs.first),
+              if (_selectedChannel == 'alipay' && _alipayConfigs.isNotEmpty)
+                _buildWechatAlipayInfo(_alipayConfigs.first),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWindowsLeftContent() {
+    return _buildWindowsLeftContentClean();
+  }
+
   Widget _buildChannelCard(
       String value, String label, String iconAsset, bool enabled) {
     final isSelected = _selectedChannel == value;
@@ -453,9 +705,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               : Colors.white.withOpacity(enabled ? 0.85 : 0.5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected
-                ? const Color(0xFFE11D48)
-                : Colors.transparent,
+            color: isSelected ? const Color(0xFFE11D48) : Colors.transparent,
             width: 2,
           ),
         ),
@@ -514,7 +764,8 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     final enabled = config.address.isNotEmpty || config.qrCode.isNotEmpty;
 
     return GestureDetector(
-      onTap: enabled ? () => setState(() => _selectedUsdtNetwork = network) : null,
+      onTap:
+          enabled ? () => setState(() => _selectedUsdtNetwork = network) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
@@ -580,7 +831,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_balance_wallet, 
+              const Icon(Icons.account_balance_wallet,
                   color: Color(0xFFE11D48), size: 20),
               const SizedBox(width: 8),
               Text(
@@ -604,7 +855,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ),
           ],
           const SizedBox(height: 16),
-          
+
           // 收款二维码
           if (config.qrCode.isNotEmpty) ...[
             Center(
@@ -635,9 +886,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             const SizedBox(height: 10),
             Center(
               child: OutlinedButton.icon(
-                onPressed: () => _saveQrCode(config.qrCode),
+                onPressed: () => _saveQrCodeToGallery(config.qrCode),
                 icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text('保存二维码'),
+                label: const Text('保存到相册'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFE11D48),
                   side: const BorderSide(color: Color(0xFFE11D48)),
@@ -707,7 +958,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.info_outline, 
+                    const Icon(Icons.info_outline,
                         size: 16, color: Color(0xFFE11D48)),
                     const SizedBox(width: 6),
                     const Text(
@@ -829,7 +1080,6 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ),
           ),
           const SizedBox(height: 16),
-          
           if (config.qrCode.isNotEmpty) ...[
             Center(
               child: Container(
@@ -859,9 +1109,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             const SizedBox(height: 10),
             Center(
               child: OutlinedButton.icon(
-                onPressed: () => _saveQrCode(config.qrCode),
+                onPressed: () => _saveQrCodeToGallery(config.qrCode),
                 icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text('保存二维码'),
+                label: const Text('保存到相册'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFE11D48),
                   side: const BorderSide(color: Color(0xFFE11D48)),
@@ -870,7 +1120,6 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ),
             const SizedBox(height: 16),
           ],
-
           if (config.address.isNotEmpty) ...[
             const Text(
               '收款地址/账号',
@@ -912,7 +1161,6 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ),
             const SizedBox(height: 16),
           ],
-
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(

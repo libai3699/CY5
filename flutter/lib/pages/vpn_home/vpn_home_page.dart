@@ -17,9 +17,11 @@ import 'components/vpn_control_panel.dart';
 import 'contact_page.dart';
 import 'data/auth_service.dart';
 import 'data/api_config.dart';
+import 'data/contact_service.dart';
 import 'data/device_identity.dart';
 import 'data/node_speed_tester.dart';
-import 'data/remote_app_loader.dart' show RemoteAppLoader, TokenExpiredException;
+import 'data/remote_app_loader.dart'
+    show RemoteAppLoader, TokenExpiredException;
 import 'data/remote_vpn_line_loader.dart';
 import 'login_devices_page.dart';
 import 'models/app_status.dart';
@@ -67,10 +69,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
   StreamSubscription<String>? _statusSubscription;
   int _heartbeatFailCount = 0; // 心跳失败计数
   int _pendingTrafficBytes = 0; // 未成功上报的累计流量
-  int _pendingSeconds = 0;      // 未成功上报的累计时长
+  int _pendingSeconds = 0; // 未成功上报的累计时长
+
+  bool _isHeartbeatInFlight = false;
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
+  bool get _keepVpnConnected => true;
   bool get _hasActivePlan =>
       _appStatus.planLevel != '免费体验' && _appStatus.remainingSeconds > 0;
 
@@ -94,21 +99,30 @@ class _VpnHomePageState extends State<VpnHomePage> {
     try {
       final session = await _authService.loadSession();
       if (mounted && session != null) {
-        setState(() { _session = session; });
+        setState(() {
+          _session = session;
+        });
       }
     } catch (_) {}
     unawaited(_loadAppData());
     unawaited(_loadNodes());
     unawaited(_registerDevice());
+    // 后台预加载联系方式，写入缓存，ContactPage 打开时直接读缓存
+    unawaited(ContactService.instance.prefetch());
   }
 
   Future<void> _registerDevice() async {
     try {
       final displayId = await _deviceIdentity.register();
       if (!mounted) return;
-      setState(() { _deviceId = displayId.isNotEmpty ? displayId : '获取中'; });
+      setState(() {
+        _deviceId = displayId.isNotEmpty ? displayId : '获取中';
+      });
     } catch (_) {
-      if (mounted) setState(() { _deviceId = '获取中'; });
+      if (mounted)
+        setState(() {
+          _deviceId = '获取中';
+        });
     }
   }
 
@@ -122,6 +136,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
         if (!mounted) return;
 
         if (event.startsWith('error:')) {
+          if (_isConnected) {
+            setState(() {
+              _message = event.substring(6);
+            });
+            return;
+          }
           setState(() {
             _status = VpnStatus.disconnected;
             _message = event.substring(6);
@@ -157,6 +177,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
       },
       onError: (error) {
         if (!mounted) return;
+        if (_isConnected) {
+          setState(() {
+            _message = '状态监听异常，当前连接保持中';
+          });
+          return;
+        }
         setState(() {
           _status = VpnStatus.disconnected;
           _message = '状态监听异常：$error';
@@ -167,29 +193,79 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   Future<void> _loadAppData() async {
     final token = _session?.token;
+    print('[AUTH] _loadAppData start token=${_maskToken(token)}');
     try {
       final status = token == null || token.isEmpty
           ? await _appLoader.loadStatus()
           : await _appLoader.loadUserStatus(token);
       if (!mounted) return;
-      setState(() { _appStatus = status; });
+      setState(() {
+        _appStatus = status;
+      });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
-    } on TokenExpiredException {
-      await _handleTokenExpired();
+    } on TokenExpiredException catch (e) {
+      print(
+          '[AUTH] _loadAppData token expired token=${_maskToken(token)} error=$e');
+      if (_isConnected) {
+        print('[AUTH] token expired ignored while vpn is connected');
+        return;
+      }
+      await _handleTokenExpired(expectedToken: token);
       return;
     } catch (_) {}
     try {
       final config = await _appLoader.loadConfig();
       if (!mounted) return;
-      setState(() { _appConfig = config; });
+      setState(() {
+        _appConfig = config;
+      });
     } catch (_) {}
   }
 
   /// Token 过期：清空本地 session，断开 VPN，提示用户重新登录
-  Future<void> _handleTokenExpired() async {
+  Future<void> _handleTokenExpired({String? expectedToken}) async {
+    final currentToken = _session?.token;
+    print(
+      '[AUTH] _handleTokenExpired expected=${_maskToken(expectedToken)} current=${_maskToken(currentToken)}',
+    );
+    if (expectedToken != null &&
+        expectedToken.isNotEmpty &&
+        currentToken != expectedToken) {
+      print('[AUTH] token expired ignored, session already switched');
+      return;
+    }
+
+    if (expectedToken != null && expectedToken.isNotEmpty) {
+      try {
+        final persistedSession = await _authService.loadSession();
+        final persistedToken = persistedSession?.token;
+        print(
+          '[AUTH] persisted session token=${_maskToken(persistedToken)} expected=${_maskToken(expectedToken)}',
+        );
+        if (persistedToken != null &&
+            persistedToken.isNotEmpty &&
+            persistedToken != expectedToken) {
+          print(
+              '[AUTH] token expired ignored, persisted session already switched');
+          return;
+        }
+      } catch (e) {
+        print('[AUTH] token expired persisted session check failed: $e');
+      }
+    }
+
+    if (_isConnected) {
+      print('[AUTH] token expired but vpn is connected, keep session and vpn');
+      if (mounted) {
+        setState(() {
+          _message = '登录状态异常，当前连接保持中';
+        });
+      }
+      return;
+    }
+
     print('[AUTH] token expired, clearing session');
-    if (_isConnected) await _disconnect();
     await _authService.clearSession();
     if (!mounted) return;
     setState(() {
@@ -206,7 +282,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
     try {
       final status = await _appLoader.loadStatus();
       if (!mounted) return;
-      setState(() { _appStatus = status; });
+      setState(() {
+        _appStatus = status;
+      });
     } catch (_) {}
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -241,8 +319,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (next <= 0) {
         _remainingTimer?.cancel();
         if (_isConnected && !_hasActivePlan) {
-          _disconnect();
-          _openPurchasePage();
+          setState(() {
+            _message = '试用已结束，当前连接保持中';
+          });
         }
       }
     });
@@ -258,12 +337,18 @@ class _VpnHomePageState extends State<VpnHomePage> {
     _heartbeatTimer?.cancel();
     _uiRefreshTimer?.cancel();
     _heartbeatFailCount = 0; // 重置失败计数
+    _isHeartbeatInFlight = false;
+    _pendingTrafficBytes = 0;
+    _pendingSeconds = 0;
+    print('[HEARTBEAT] disabled while vpn is connected');
+    /*
     _sendHeartbeat(seconds: 1);
     // 改为30秒心跳间隔，避免VPN在心跳前断开
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) _sendHeartbeat(seconds: 30);
     });
-    
+    */
+
     // 启动秒级UI刷新，用于前端乐观更新流量显示
     _uiRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _isConnected) {
@@ -275,130 +360,126 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Future<void> _sendHeartbeat({required int seconds}) async {
     final token = _session?.token;
     if (token == null || token.isEmpty || !_isConnected) return;
-    
-    print('[HEARTBEAT-CLIENT] ========== 开始发送心跳 ==========');
-    
+
     // 获取本次心跳周期内的流量增量并累加到 pending
     final trafficDelta = VpnNativeChannel.consumeTrafficDelta();
-    print('[HEARTBEAT-CLIENT] 本次流量增量: $trafficDelta bytes (${_formatBytes(trafficDelta)})');
-    
     _pendingTrafficBytes += trafficDelta;
     _pendingSeconds += seconds;
-    
-    print('[HEARTBEAT-CLIENT] 累计待上报流量: $_pendingTrafficBytes bytes (${_formatBytes(_pendingTrafficBytes)})');
-    print('[HEARTBEAT-CLIENT] 累计待上报秒数: $_pendingSeconds 秒');
 
-    // 服务端对单次 seconds 有 65 秒上限限制，防止异常数据
-    if (_pendingSeconds > 60) {
-      _pendingSeconds = 60;
+    print(
+        '[HEARTBEAT] delta=${_formatBytes(trafficDelta)} pending=${_formatBytes(_pendingTrafficBytes)} secs=$_pendingSeconds');
+
+    if (_isHeartbeatInFlight) {
+      print('[HEARTBEAT] skip send, previous request still in flight');
+      return;
     }
+    _isHeartbeatInFlight = true;
 
+    // 服务端对单次 seconds 有 65 秒上限，只截断秒数，流量不截断
+    final secondsToSend = _pendingSeconds > 60 ? 60 : _pendingSeconds;
     final bytesToSend = _pendingTrafficBytes;
-    final secondsToSend = _pendingSeconds;
-    
-    print('[HEARTBEAT-CLIENT] 准备上报: $bytesToSend bytes (${_formatBytes(bytesToSend)}), $secondsToSend 秒');
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
+      print(
+          '[HEARTBEAT] send start bytes=${_formatBytes(bytesToSend)} secs=$secondsToSend');
       final request = await client
           .postUrl(Uri.parse(kUserHeartbeatApiUrl))
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 8));
       request.headers.contentType = ContentType.json;
       request.headers.set('Authorization', 'Bearer $token');
       request.write(jsonEncode({
         'seconds': secondsToSend,
         'traffic_bytes': bytesToSend,
       }));
-      final response = await request.close().timeout(const Duration(seconds: 15));
-      final body = await response.transform(utf8.decoder).join();
+      final response =
+          await request.close().timeout(const Duration(seconds: 8));
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 8));
+
       if (response.statusCode == 401) {
-        await _handleTokenExpired();
+        print('[HEARTBEAT] 401 body: $body token=${_maskToken(token)}');
+        _heartbeatFailCount++;
         return;
       }
-      
+
       bool serverConfirmed = false;
       Map<String, dynamic>? data;
-
       try {
         final decoded = jsonDecode(body);
         if (decoded is Map<String, dynamic>) {
-          if (decoded['code'] == 0 || decoded['code'] == 200) {
-            serverConfirmed = true;
-          }
+          serverConfirmed = decoded['code'] == 0 || decoded['code'] == 200;
           data = decoded['data'] as Map<String, dynamic>?;
         }
-      } catch (e) {
-        print('[HEARTBEAT] jsonDecode error: $e');
-      }
+      } catch (_) {}
 
-      if (response.statusCode >= 200 && response.statusCode < 300 && serverConfirmed) {
-        print('[HEARTBEAT-CLIENT] ✅ 服务端确认成功');
-        // 心跳被服务端明确接收并处理成功，扣除刚刚成功上报的那部分缓存数据
-        _pendingTrafficBytes -= bytesToSend;
-        _pendingSeconds -= secondsToSend;
-        
-        print('[HEARTBEAT-CLIENT] 扣除已上报数据后，剩余待上报: $_pendingTrafficBytes bytes, $_pendingSeconds 秒');
-        
-        // 兜底防御，防止异常变负
-        if (_pendingTrafficBytes < 0) _pendingTrafficBytes = 0;
-        if (_pendingSeconds < 0) _pendingSeconds = 0;
-        
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          serverConfirmed) {
+        // 服务端确认，扣除已上报部分
+        _pendingTrafficBytes = (_pendingTrafficBytes - bytesToSend)
+            .clamp(0, double.maxFinite.toInt());
+        _pendingSeconds = (_pendingSeconds - secondsToSend)
+            .clamp(0, double.maxFinite.toInt());
         _heartbeatFailCount = 0;
+        print(
+            '[HEARTBEAT] ✅ confirmed, remaining pending=${_formatBytes(_pendingTrafficBytes)}');
       } else {
-        print('[HEARTBEAT-CLIENT] ❌ 服务端返回失败，保留待上报数据');
-        // 服务端返回业务错误或无法解析，视为失败，保留 pending 数据
         _heartbeatFailCount++;
+        print('[HEARTBEAT] ❌ server rejected (count=$_heartbeatFailCount)');
       }
 
-      // 解析心跳响应，更新流量和时长状态
-      if (data != null) {
+      // 更新 UI 状态
+      if (data != null && mounted) {
         final trafficRemaining = data['traffic_remaining']?.toString();
-        final remainingSeconds = int.tryParse(data['remaining_seconds']?.toString() ?? '');
+        final remainingSeconds =
+            int.tryParse(data['remaining_seconds']?.toString() ?? '');
         final remainingTimeText = data['remaining_time_text']?.toString();
         final trafficExhausted = data['traffic_exhausted'] == true;
 
-        print('[HEARTBEAT-CLIENT] 服务端返回剩余流量: $trafficRemaining');
-        print('[HEARTBEAT-CLIENT] 服务端返回剩余时间: $remainingTimeText');
-        print('[HEARTBEAT-CLIENT] 流量是否耗尽: $trafficExhausted');
+        setState(() {
+          _appStatus = AppStatus(
+            planLevel: _appStatus.planLevel,
+            remainingSeconds: remainingSeconds ?? _appStatus.remainingSeconds,
+            remainingTimeText:
+                remainingTimeText ?? _appStatus.remainingTimeText,
+            trafficRemaining: trafficRemaining ?? _appStatus.trafficRemaining,
+          );
+        });
 
+        if (_keepVpnConnected && trafficExhausted && _isConnected) {
+          print('[HEARTBEAT] traffic exhausted, keep vpn connected');
+          if (mounted) setState(() => _message = '流量已用完，当前连接保持中');
+          return;
+        }
+
+        if (!_keepVpnConnected && trafficExhausted && _isConnected) {
+          print('[HEARTBEAT] ⚠️ traffic exhausted, disconnecting');
+          await _disconnect();
+          if (mounted) setState(() => _message = '流量已用完，请购买套餐');
+          _openPurchasePage();
+          return;
+        }
+      }
+
+      if (!_hasActivePlan && _appStatus.remainingSeconds <= 0 && _isConnected) {
+        print('[HEARTBEAT] remaining time exhausted, keep vpn connected');
         if (mounted) {
           setState(() {
-            _appStatus = AppStatus(
-              planLevel: _appStatus.planLevel,
-              remainingSeconds: remainingSeconds ?? _appStatus.remainingSeconds,
-              remainingTimeText: remainingTimeText ?? _appStatus.remainingTimeText,
-              trafficRemaining: trafficRemaining ?? _appStatus.trafficRemaining,
-            );
+            _message = '试用已结束，当前连接保持中';
           });
         }
-
-          // 流量耗尽，断开 VPN
-          if (trafficExhausted && _isConnected) {
-            print('[HEARTBEAT-CLIENT] ⚠️ 流量已耗尽，断开VPN');
-            await _disconnect();
-            if (mounted) {
-              setState(() => _message = '流量已用完，请购买套餐');
-            }
-            _openPurchasePage();
-            return;
-          }
-        }
-
-      print('[HEARTBEAT-CLIENT] ========== 心跳处理完成 ==========');
-
-      if (_appStatus.remainingSeconds <= 0 && !_hasActivePlan) {
-        await _disconnect();
       }
     } catch (e) {
-      // 心跳失败，增加失败计数
       _heartbeatFailCount++;
-      print('[HEARTBEAT-CLIENT] ❌ 心跳失败 (count: $_heartbeatFailCount): $e');
-      
-      // 心跳失败不断开VPN，继续重试
-      // VPN连接状态由系统层面管理，心跳只用于统计使用时长
+      print('[HEARTBEAT] ❌ exception (count=$_heartbeatFailCount): $e');
+      // 心跳失败不断开 VPN，pending 数据保留下次重试
     } finally {
       client.close(force: true);
+      _isHeartbeatInFlight = false;
+      print('[HEARTBEAT] send end');
     }
   }
 
@@ -414,7 +495,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (minutes < 60) return '$minutes分钟';
     final hours = minutes ~/ 60;
     final restMinutes = minutes % 60;
-    if (hours < 24) return restMinutes > 0 ? '$hours小时 $restMinutes分钟' : '$hours小时';
+    if (hours < 24)
+      return restMinutes > 0 ? '$hours小时 $restMinutes分钟' : '$hours小时';
     final days = hours ~/ 24;
     final restHours = hours % 24;
     return restHours > 0 ? '$days天 $restHours小时' : '$days天';
@@ -423,20 +505,24 @@ class _VpnHomePageState extends State<VpnHomePage> {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(3)} GB';
   }
 
   Future<void> _loadNodes() async {
     if (!mounted) return;
-    setState(() { _isLoadingNodes = true; _message = null; });
+    setState(() {
+      _isLoadingNodes = true;
+      _message = null;
+    });
     try {
       final nodes = await _lineLoader.load();
-      
+
       // 测速并排序
       print('[LOAD_NODES] 开始测速 ${nodes.length} 个节点');
       final sortedNodes = await _speedTester.testAndSortNodes(nodes);
-      
+
       if (!mounted) return;
       setState(() {
         _nodes = sortedNodes;
@@ -448,7 +534,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (!mounted) return;
       setState(() {
         _isLoadingNodes = false;
-        if (_nodes.isEmpty) { _nodes = const []; _selectedNode = null; }
+        if (_nodes.isEmpty) {
+          _nodes = const [];
+          _selectedNode = null;
+        }
         _message = '线路加载失败，请点击重试';
       });
     }
@@ -475,7 +564,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
         }
         setState(() {
           _nodes = sortedNodes;
-          _selectedNode = nextSelected ?? (sortedNodes.isNotEmpty ? sortedNodes.first : null);
+          _selectedNode = nextSelected ??
+              (sortedNodes.isNotEmpty ? sortedNodes.first : null);
           _message = '线路已刷新';
         });
       }
@@ -497,7 +587,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
     for (var i = 0; i < current.length; i++) {
       final a = current[i];
       final b = next[i];
-      if (a.id != b.id || a.name != b.name || a.address != b.address || a.rawUri != b.rawUri) {
+      if (a.id != b.id ||
+          a.name != b.name ||
+          a.address != b.address ||
+          a.rawUri != b.rawUri) {
         return false;
       }
     }
@@ -520,7 +613,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
       await _loadAppData();
     }
 
-    if ((session.trialExpired || _appStatus.remainingSeconds <= 0) && !_hasActivePlan) {
+    if (!_keepVpnConnected &&
+        (session.trialExpired || _appStatus.remainingSeconds <= 0) &&
+        !_hasActivePlan) {
       setState(() {
         _message = '试用已结束，请购买套餐后连接';
       });
@@ -601,9 +696,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
       PageRouteBuilder<void>(
         pageBuilder: (_, __, ___) => const ContactPage(),
         transitionsBuilder: (_, animation, __, child) {
-          final tween = Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
-              .chain(CurveTween(curve: Curves.easeOutCubic));
-          return SlideTransition(position: animation.drive(tween), child: child);
+          final tween =
+              Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeOutCubic));
+          return SlideTransition(
+              position: animation.drive(tween), child: child);
         },
       ),
     );
@@ -626,6 +723,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
         builder: (_) => AuthPage(config: _appConfig),
       ),
     );
+    print(
+        '[AUTH] _openAuthPage returned session=${_maskToken(session?.token)}');
     if (session == null || !mounted) return;
     setState(() {
       _session = session;
@@ -634,12 +733,22 @@ class _VpnHomePageState extends State<VpnHomePage> {
     await _loadAppData();
   }
 
+  String _maskToken(String? token) {
+    if (token == null || token.isEmpty) return '<none>';
+    if (token.length <= 12) return token;
+    return '${token.substring(0, 6)}...${token.substring(token.length - 6)}';
+  }
+
   Future<void> _logoutCurrentDevice() async {
     final token = _session?.token;
     if (token == null || token.isEmpty) return;
 
     // 先断开 VPN
-    if (_isConnected || _isConnecting) await _disconnect();
+    if (!_keepVpnConnected && (_isConnected || _isConnecting)) {
+      await _disconnect();
+    } else if (_isConnected || _isConnecting) {
+      print('[AUTH] logout requested while vpn is connected, keep vpn running');
+    }
 
     // 取消定时器
     _appStatusRefreshTimer?.cancel();
@@ -676,7 +785,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
     try {
       final status = await _appLoader.loadStatus();
       if (!mounted) return;
-      setState(() { _appStatus = status; });
+      setState(() {
+        _appStatus = status;
+      });
     } catch (_) {}
 
     if (!mounted) return;
@@ -718,7 +829,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
           builder: (_) => AuthPage(
             onLoginSuccess: (session) {
               // 登录成功后，更新session并打开购买页面
-              setState(() { _session = session; });
+              setState(() {
+                _session = session;
+              });
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => PurchasePage(
@@ -733,7 +846,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       );
       return;
     }
-    
+
     // 已登录，直接打开购买页面
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -777,15 +890,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
   String _calculateOptimisticTraffic(String backendText, int pendingBytes) {
     if (pendingBytes <= 0) return backendText;
     if (backendText == '不限流量' || backendText == '无限流量') return backendText;
-    
+
     try {
       final parts = backendText.trim().split(' ');
       if (parts.length >= 2) {
         final val = double.tryParse(parts[0]);
         if (val == null) return backendText;
-        
+
         final unit = parts[1].toUpperCase();
-        
+
         double bytes = 0;
         if (unit == 'GB') {
           bytes = val * 1024 * 1024 * 1024;
@@ -796,32 +909,36 @@ class _VpnHomePageState extends State<VpnHomePage> {
         } else {
           return backendText;
         }
-        
+
         double newBytes = bytes - pendingBytes;
         if (newBytes < 0) newBytes = 0;
-        
+
         if (newBytes < 1024 * 1024 * 1024) {
-           return '${(newBytes / 1024 / 1024).toStringAsFixed(2)} MB';
+          return '${(newBytes / 1024 / 1024).toStringAsFixed(2)} MB';
         } else {
-           return '${(newBytes / 1024 / 1024 / 1024).toStringAsFixed(3)} GB';
+          return '${(newBytes / 1024 / 1024 / 1024).toStringAsFixed(3)} GB';
         }
       }
     } catch (e) {
-       // fallback
+      // fallback
     }
     return backendText;
   }
 
   String get _displayTrafficRemaining {
-    final text = _appStatus.trafficRemaining.trim();
-    final isFreeTrial = _appStatus.planLevel == '免费体验';
-    if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
-      return '无限流量';
+    try {
+      final text = _appStatus.trafficRemaining.trim();
+      final isFreeTrial = _appStatus.planLevel == '免费体验';
+      if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
+        return '无限流量';
+      }
+      // 乐观更新：减去已出账但还没发给服务端的流量
+      final totalPending =
+          _pendingTrafficBytes + VpnNativeChannel.unconsumedBytes;
+      return _calculateOptimisticTraffic(text, totalPending);
+    } catch (_) {
+      return _appStatus.trafficRemaining;
     }
-    
-    // 乐观更新：减去已出账但还没发给服务端的流量（排队的 + 本次连接还没消费的）
-    final totalPending = _pendingTrafficBytes + VpnNativeChannel.unconsumedBytes;
-    return _calculateOptimisticTraffic(text, totalPending);
   }
 
   @override
@@ -878,7 +995,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
                     context: context,
                     barrierDismissible: false,
                     builder: (ctx) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
                       contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
                       content: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -890,12 +1008,20 @@ class _VpnHomePageState extends State<VpnHomePage> {
                               color: const Color(0xFFFFE4E8),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFE11D48), size: 30),
+                            child: const Icon(Icons.card_giftcard_rounded,
+                                color: Color(0xFFE11D48), size: 30),
                           ),
                           const SizedBox(height: 16),
-                          const Text('套餐已更新', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF881337))),
+                          const Text('套餐已更新',
+                              style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF881337))),
                           const SizedBox(height: 8),
-                          Text(msg, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Color(0xFF9F1239))),
+                          Text(msg,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 14, color: Color(0xFF9F1239))),
                           const SizedBox(height: 20),
                         ],
                       ),
@@ -903,7 +1029,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
-                            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE11D48)),
+                            style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFE11D48)),
                             onPressed: () => Navigator.of(ctx).pop(),
                             child: const Text('好的'),
                           ),
@@ -918,11 +1045,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
               Expanded(
                 child: RefreshIndicator(
                   color: const Color(0xFFE11D48),
-                  onRefresh: _isConnected ? () async {} : () async {
-                    setState(() => _quoteKey++);
-                    await _loadAppData();
-                    await _loadNodes();
-                  },
+                  onRefresh: _isConnected
+                      ? () async {}
+                      : () async {
+                          setState(() => _quoteKey++);
+                          await _loadAppData();
+                          await _loadNodes();
+                        },
                   child: VpnControlPanel(
                     status: _status,
                     node: _selectedNode,
@@ -938,7 +1067,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
                   ),
                 ),
               ),
-              if (_session != null && _appStatus.remainingSeconds <= 0 && !_hasActivePlan)
+              if (_session != null &&
+                  _appStatus.remainingSeconds <= 0 &&
+                  !_hasActivePlan)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                   child: SizedBox(
@@ -948,8 +1079,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFE11D48),
                         foregroundColor: Colors.white,
-                        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                        textStyle: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w700),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 28, vertical: 16),
                         shadowColor: const Color(0xFFE11D48).withOpacity(0.4),
                         elevation: 6,
                       ),

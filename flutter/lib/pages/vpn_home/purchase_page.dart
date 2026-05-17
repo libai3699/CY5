@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../utils/platform_utils.dart';
 import 'components/common_page_top_bar.dart';
 import 'contact_page.dart';
 import 'data/api_config.dart';
@@ -134,17 +135,26 @@ class _PurchasePageState extends State<PurchasePage> {
 
   @override
   Widget build(BuildContext context) {
+    final contentMaxWidth = PlatformUtils.getContentMaxWidth();
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFF1F2),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonPageTopBar(
-              title: '购买套餐',
-              showRightButton: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: contentMaxWidth ?? double.infinity,
             ),
-            Expanded(child: _buildBody()),
-          ],
+            child: Column(
+              children: [
+                const CommonPageTopBar(
+                  title: '购买套餐',
+                  showRightButton: false,
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -1,11 +1,9 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../utils/platform_utils.dart';
 import 'components/common_page_top_bar.dart';
-import 'data/api_config.dart';
+import 'data/contact_service.dart';
 
 class ContactPage extends StatefulWidget {
   const ContactPage({super.key});
@@ -15,8 +13,11 @@ class ContactPage extends StatefulWidget {
 }
 
 class _ContactPageState extends State<ContactPage> {
-  List<_ContactItem> _items = [];
+  List<ContactItem> _items = const [];
   bool _loading = true;
+  bool _isRefreshing = false;
+  bool _fromCache = false;
+  OverlayEntry? _copyNoticeEntry;
 
   @override
   void initState() {
@@ -24,48 +25,126 @@ class _ContactPageState extends State<ContactPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 8);
-    try {
-      final request = await client.getUrl(Uri.parse(kContactApiUrl));
-      final response = await request.close();
-      final body = await response.transform(utf8.decoder).join();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
+  @override
+  void dispose() {
+    _copyNoticeEntry?.remove();
+    _copyNoticeEntry = null;
+    super.dispose();
+  }
 
-      final decoded = jsonDecode(body);
-      final list = decoded?['data'];
-      if (list is List && mounted) {
-        setState(() {
-          _items = list
-              .whereType<Map<String, dynamic>>()
-              .map(_ContactItem.fromJson)
-              .toList();
-          _loading = false;
-        });
-      } else if (mounted) {
-        setState(() => _loading = false);
+  Future<void> _load() async {
+    if (!mounted) return;
+    setState(() => _loading = true);
+
+    final items = await ContactService.instance.getContacts();
+
+    if (!mounted) return;
+    setState(() {
+      _items = items;
+      _loading = false;
+      _fromCache = false;
+    });
+  }
+
+  Future<void> _refresh() async {
+    if (_isRefreshing || !mounted) return;
+    setState(() => _isRefreshing = true);
+
+    final items = await ContactService.instance.refresh();
+
+    if (!mounted) return;
+    setState(() {
+      if (items.isNotEmpty) {
+        _items = items;
       }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    } finally {
-      client.close(force: true);
-    }
+      _isRefreshing = false;
+      _fromCache = false;
+    });
+  }
+
+  Future<void> _copyContact(ContactItem item) async {
+    await Clipboard.setData(ClipboardData(text: item.value));
+    if (!mounted) return;
+    _showCopyNotice('已复制 ${item.label}');
+  }
+
+  void _showCopyNotice(String message) {
+    _copyNoticeEntry?.remove();
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    final entry = OverlayEntry(
+      builder: (_) => Positioned(
+        top: 100,
+        left: 20,
+        right: 20,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF881337).withOpacity(0.96),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    _copyNoticeEntry = entry;
+    overlay.insert(entry);
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      if (_copyNoticeEntry == entry) {
+        _copyNoticeEntry?.remove();
+        _copyNoticeEntry = null;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final contentMaxWidth = PlatformUtils.getContentMaxWidth();
+
     return Scaffold(
       backgroundColor: const Color(0xFFFFF1F2),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonPageTopBar(title: '联系我们', showRightButton: false),
-            Expanded(child: _buildBody()),
-          ],
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: contentMaxWidth ?? double.infinity,
+            ),
+            child: Column(
+              children: [
+                CommonPageTopBar(
+                  title: '联系我们',
+                  showRightButton: true,
+                  rightIcon: Icons.refresh_rounded,
+                  onRightPressed: _isRefreshing ? null : _refresh,
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -73,13 +152,65 @@ class _ContactPageState extends State<ContactPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFE11D48)));
-    }
-    if (_items.isEmpty) {
       return const Center(
-        child: Text('暂无联系方式', style: TextStyle(color: Color(0xFF9F1239))),
+        child: CircularProgressIndicator(color: Color(0xFFE11D48)),
       );
     }
+
+    if (_items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.wifi_off_rounded,
+                size: 48,
+                color: const Color(0xFFE11D48).withOpacity(0.5),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '暂时无法加载联系方式',
+                style: TextStyle(
+                  color: Color(0xFF881337),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '请连接 VPN 后重试，或直接搜索我们的官方频道',
+                style: TextStyle(
+                  color: const Color(0xFF9F1239).withOpacity(0.7),
+                  fontSize: 13,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _isRefreshing ? null : _refresh,
+                icon: _isRefreshing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+                label: const Text('重新加载'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFE11D48),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
       itemCount: _items.length,
@@ -120,16 +251,7 @@ class _ContactPageState extends State<ContactPage> {
               ),
               if (!isEmpty)
                 IconButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: item.value));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('已复制 ${item.label}'),
-                        duration: const Duration(seconds: 2),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
+                  onPressed: () => _copyContact(item),
                   icon: const Icon(Icons.copy_rounded, size: 18),
                   color: const Color(0xFF9F1239),
                   tooltip: '复制',
@@ -144,15 +266,13 @@ class _ContactPageState extends State<ContactPage> {
   Widget _buildIcon(String key) {
     final asset = _assetFor(key);
     if (asset == null) {
-      return const Icon(Icons.mark_chat_unread_rounded, color: Color(0xFFE11D48), size: 32);
+      return const Icon(
+        Icons.mark_chat_unread_rounded,
+        color: Color(0xFFE11D48),
+        size: 32,
+      );
     }
-
-    return Image.asset(
-      asset,
-      width: 34,
-      height: 34,
-      fit: BoxFit.contain,
-    );
+    return Image.asset(asset, width: 34, height: 34, fit: BoxFit.contain);
   }
 
   String? _assetFor(String key) {
@@ -164,17 +284,4 @@ class _ContactPageState extends State<ContactPage> {
     if (key.contains('qq')) return 'assets/images/contact/qq.png';
     return null;
   }
-}
-
-class _ContactItem {
-  const _ContactItem({required this.key, required this.label, required this.value});
-  final String key;
-  final String label;
-  final String value;
-
-  factory _ContactItem.fromJson(Map<String, dynamic> json) => _ContactItem(
-        key: json['key']?.toString() ?? '',
-        label: json['label']?.toString() ?? '',
-        value: json['value']?.toString() ?? '',
-      );
 }

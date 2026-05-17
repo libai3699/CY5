@@ -23,12 +23,15 @@ class AuthSession {
   bool get trialExpired => freeRemaining <= 0;
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
-    final user = json['user'] is Map<String, dynamic> ? json['user'] as Map<String, dynamic> : <String, dynamic>{};
+    final user = json['user'] is Map<String, dynamic>
+        ? json['user'] as Map<String, dynamic>
+        : <String, dynamic>{};
     return AuthSession(
       token: json['token']?.toString() ?? '',
       username: user['username']?.toString() ?? '',
       deviceId: user['device_id']?.toString() ?? '',
-      freeRemaining: int.tryParse(user['free_remaining']?.toString() ?? '') ?? 0,
+      freeRemaining:
+          int.tryParse(user['free_remaining']?.toString() ?? '') ?? 0,
     );
   }
 
@@ -47,9 +50,24 @@ class AuthService {
 
   Future<AuthSession?> loadSession() async {
     final file = await _sessionFile();
-    if (!await file.exists()) return null;
-    final decoded = jsonDecode(await file.readAsString());
-    if (decoded is Map<String, dynamic>) return AuthSession.fromJson(decoded);
+    if (!await file.exists()) {
+      print('[AUTH] loadSession: no local session file at ${file.path}');
+      return null;
+    }
+
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is Map<String, dynamic>) {
+        final session = AuthSession.fromJson(decoded);
+        print(
+          '[AUTH] loadSession: loaded token=${_maskToken(session.token)} from ${file.path}',
+        );
+        return session;
+      }
+    } catch (e) {
+      print('[AUTH] loadSession: invalid session file, clearing. error=$e');
+      await clearSession();
+    }
     return null;
   }
 
@@ -58,6 +76,7 @@ class AuthService {
     required String password,
   }) async {
     final deviceId = await const DeviceIdentity().getOrCreateDeviceId();
+    print('[AUTH] login start username=$username device_id=$deviceId');
     return _postAuth(kAuthLoginUrl, {
       'username': username,
       'password': password,
@@ -70,6 +89,7 @@ class AuthService {
     required String password,
   }) async {
     final deviceId = await const DeviceIdentity().getOrCreateDeviceId();
+    print('[AUTH] register start username=$username device_id=$deviceId');
     return _postAuth(kAuthRegisterUrl, {
       'username': username,
       'password': password,
@@ -79,18 +99,25 @@ class AuthService {
 
   Future<void> saveSession(AuthSession session) async {
     final file = await _sessionFile();
-    await file.writeAsString(jsonEncode(session.toJson()));
+    final parent = file.parent;
+    if (!await parent.exists()) {
+      await parent.create(recursive: true);
+    }
+    await file.writeAsString(jsonEncode(session.toJson()), flush: true);
+    print(
+      '[AUTH] saveSession: saved token=${_maskToken(session.token)} to ${file.path}',
+    );
   }
 
   Future<void> logout(String token) async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       final request = await client
           .postUrl(Uri.parse(kUserLogoutApiUrl))
           .timeout(const Duration(seconds: 8));
       request.headers.set('Authorization', 'Bearer $token');
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response =
+          await request.close().timeout(const Duration(seconds: 8));
       await response.drain<void>();
     } catch (e) {
       print('[AUTH] logout error: $e');
@@ -108,12 +135,16 @@ class AuthService {
           .getUrl(Uri.parse(kUserDevicesApiUrl))
           .timeout(const Duration(seconds: 10));
       request.headers.set('Authorization', 'Bearer $token');
-      final response = await request.close().timeout(const Duration(seconds: 10));
+      final response =
+          await request.close().timeout(const Duration(seconds: 10));
       final raw = await response.transform(utf8.decoder).join();
       final decoded = jsonDecode(raw);
       final data = decoded is Map<String, dynamic> ? decoded['data'] : null;
       if (data is List) {
-        return data.whereType<Map<String, dynamic>>().map(LoginDevice.fromJson).toList();
+        return data
+            .whereType<Map<String, dynamic>>()
+            .map(LoginDevice.fromJson)
+            .toList();
       }
       return const [];
     } finally {
@@ -129,7 +160,8 @@ class AuthService {
           .deleteUrl(Uri.parse('$kUserDevicesApiUrl/$id'))
           .timeout(const Duration(seconds: 10));
       request.headers.set('Authorization', 'Bearer $token');
-      final response = await request.close().timeout(const Duration(seconds: 10));
+      final response =
+          await request.close().timeout(const Duration(seconds: 10));
       await response.drain<void>();
     } finally {
       client.close(force: true);
@@ -139,7 +171,10 @@ class AuthService {
   Future<void> clearSession() async {
     final file = await _sessionFile();
     if (await file.exists()) {
+      print('[AUTH] clearSession: deleting ${file.path}');
       await file.delete();
+    } else {
+      print('[AUTH] clearSession: no session file to delete');
     }
   }
 
@@ -147,18 +182,29 @@ class AuthService {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
     try {
+      print(
+        '[AUTH] request start url=$url username=${body['username']} device_id=${body['device_id']}',
+      );
       final request = await client
           .postUrl(Uri.parse(url))
           .timeout(const Duration(seconds: 10));
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
-      final response = await request.close().timeout(const Duration(seconds: 10));
+      final response =
+          await request.close().timeout(const Duration(seconds: 10));
       final raw = await response.transform(utf8.decoder).join();
+      print('[AUTH] response status=${response.statusCode} url=$url body=$raw');
       final decoded = jsonDecode(raw);
-      if (decoded is! Map<String, dynamic>) throw Exception('接口数据格式错误');
-      if (decoded['code'] != 0) throw Exception(decoded['message']?.toString() ?? '请求失败');
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('接口数据格式错误');
+      }
+      if (decoded['code'] != 0) {
+        throw Exception(decoded['message']?.toString() ?? '请求失败');
+      }
       final data = decoded['data'];
-      if (data is! Map<String, dynamic>) throw Exception('接口数据格式错误');
+      if (data is! Map<String, dynamic>) {
+        throw Exception('接口数据格式错误');
+      }
       final session = AuthSession.fromJson(data);
       await saveSession(session);
       return session;
@@ -170,6 +216,11 @@ class AuthService {
   Future<File> _sessionFile() async {
     final dir = await getApplicationSupportDirectory();
     return File(p.join(dir.path, 'auth_session.json'));
+  }
+
+  String _maskToken(String token) {
+    if (token.length <= 12) return token;
+    return '${token.substring(0, 6)}...${token.substring(token.length - 6)}';
   }
 }
 
@@ -192,7 +243,8 @@ class LoginDevice {
     final name = [brand, model].where((item) => item.isNotEmpty).join(' ');
     return LoginDevice(
       id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
-      displayId: json['display_id']?.toString() ?? json['device_id']?.toString() ?? '',
+      displayId:
+          json['display_id']?.toString() ?? json['device_id']?.toString() ?? '',
       name: name.isEmpty ? '未知设备' : name,
       lastSeenAt: json['last_seen_at']?.toString() ?? '',
     );

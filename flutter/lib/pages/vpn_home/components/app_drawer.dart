@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/platform_utils.dart';
 import '../data/api_config.dart';
 
 class AppDrawer extends StatelessWidget {
@@ -37,7 +38,8 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width * 0.75;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final width = PlatformUtils.getDrawerWidth(screenWidth);
 
     return SizedBox(
       width: width,
@@ -194,19 +196,21 @@ class AppDrawer extends StatelessWidget {
                         onLogoutPressed();
                       },
                     ),
-                  ListTile(
-                    leading: const Icon(Icons.smart_toy_rounded, color: Color(0xFFE11D48), size: 24),
-                    title: const Text(
-                      'ChatGPT',
-                      style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
-                    ),
-                    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      onChatGptPressed();
-                    },
-                  ),
-                  ListTile(
+                  // ChatGPT 入口暂时隐藏（webview_flutter 在 Windows 不支持，待后续处理）
+                  // ListTile(
+                  //   leading: const Icon(Icons.smart_toy_rounded, color: Color(0xFFE11D48), size: 24),
+                  //   title: const Text(
+                  //     'ChatGPT',
+                  //     style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                  //   ),
+                  //   trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                  //   onTap: () {
+                  //     Navigator.of(context).pop();
+                  //     onChatGptPressed();
+                  //   },
+                  // ),
+                  if (false) // 消息通知入口暂时隐藏
+                    ListTile(
                     leading: const Icon(Icons.notifications_rounded, color: Color(0xFFE11D48), size: 24),
                     title: const Text(
                       '消息通知',

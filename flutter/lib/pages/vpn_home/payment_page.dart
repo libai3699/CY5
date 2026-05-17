@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../utils/platform_utils.dart';
 import 'components/common_page_top_bar.dart';
 import 'contact_page.dart';
 import 'data/api_config.dart';
@@ -209,14 +210,21 @@ class _PaymentPageState extends State<PaymentPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF1F2),
       body: SafeArea(
-        child: Column(
-          children: [
-            const CommonPageTopBar(
-              title: '选择支付方式',
-              showRightButton: false,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: PlatformUtils.getContentMaxWidth() ?? double.infinity,
             ),
-            Expanded(child: _buildBody()),
-          ],
+            child: Column(
+              children: [
+                const CommonPageTopBar(
+                  title: '选择支付方式',
+                  showRightButton: false,
+                ),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          ),
         ),
       ),
     );

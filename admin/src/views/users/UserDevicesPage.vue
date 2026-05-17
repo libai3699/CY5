@@ -19,6 +19,14 @@ async function load() {
 
 function handleSearch() { page.current = 1; load(); }
 
+function fmtTime(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
 onMounted(load);
 </script>
 
@@ -49,7 +57,15 @@ onMounted(load);
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="last_seen_at" label="最后活跃" width="170" />
+        <el-table-column label="最后活跃" width="170">
+          <template #default="{ row }">{{ fmtTime(row.last_seen_at) }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="170">
+          <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="更新时间" width="170">
+          <template #default="{ row }">{{ fmtTime(row.updated_at) }}</template>
+        </el-table-column>
       </el-table>
       <div class="mt-4 flex justify-end">
         <el-pagination v-model:current-page="page.current" v-model:page-size="page.size" :total="total" layout="total, prev, pager, next" @change="load" />
