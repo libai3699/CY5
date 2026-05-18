@@ -13,12 +13,14 @@ class AuthSession {
     required this.username,
     required this.deviceId,
     required this.freeRemaining,
+    required this.inviteCode,
   });
 
   final String token;
   final String username;
   final String deviceId;
   final int freeRemaining;
+  final String inviteCode;
 
   bool get trialExpired => freeRemaining <= 0;
 
@@ -32,6 +34,7 @@ class AuthSession {
       deviceId: user['device_id']?.toString() ?? '',
       freeRemaining:
           int.tryParse(user['free_remaining']?.toString() ?? '') ?? 0,
+      inviteCode: user['invite_code']?.toString() ?? '',
     );
   }
 
@@ -41,6 +44,7 @@ class AuthSession {
           'username': username,
           'device_id': deviceId,
           'free_remaining': freeRemaining,
+          'invite_code': inviteCode,
         },
       };
 }
@@ -87,6 +91,7 @@ class AuthService {
   Future<AuthSession> register({
     required String username,
     required String password,
+    String inviteCode = '',
   }) async {
     final deviceId = await const DeviceIdentity().getOrCreateDeviceId();
     print('[AUTH] register start username=$username device_id=$deviceId');
@@ -94,6 +99,7 @@ class AuthService {
       'username': username,
       'password': password,
       'device_id': deviceId,
+      if (inviteCode.trim().isNotEmpty) 'invite_code': inviteCode.trim(),
     });
   }
 

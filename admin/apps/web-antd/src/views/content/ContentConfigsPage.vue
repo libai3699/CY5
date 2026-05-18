@@ -7,6 +7,17 @@ const loading = ref(false);
 const list = ref<AppConfig[]>([]);
 const editingKey = ref('');
 const editingValue = ref('');
+const bulkVersion = ref('');
+const bulkSaving = ref(false);
+
+const versionConfigKeys = [
+  'download_vpn_apk',
+  'download_acc_apk',
+  'download_vpn_exe',
+  'download_acc_exe',
+  'app_vpn_version',
+  'app_acc_version',
+];
 
 // 配置分组定义
 const groups = [
@@ -54,11 +65,50 @@ async function saveEdit(row: AppConfig) {
   await load();
 }
 
+function replaceVersionValue(row: AppConfig, version: string) {
+  if (row.key_name.startsWith('app_')) return version;
+  const next = row.value.replace(/_\d+\.\d+\.\d+(?=\.(apk|exe)(\?|$))/i, `_${version}`);
+  if (next !== row.value) return next;
+  return row.value.replace(/\d+\.\d+\.\d+/, version);
+}
+
+async function applyBulkVersion() {
+  const version = bulkVersion.value.trim();
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    ElMessage.warning('请输入正确版本号，例如 0.0.9');
+    return;
+  }
+
+  const rows = list.value.filter((item) => versionConfigKeys.includes(item.key_name));
+  if (rows.length === 0) {
+    ElMessage.warning('没有找到需要更新的版本配置');
+    return;
+  }
+
+  bulkSaving.value = true;
+  try {
+    await Promise.all(rows.map((row) => updateConfig(row.key_name, replaceVersionValue(row, version))));
+    ElMessage.success(`已统一更新为 ${version}`);
+    await load();
+  } finally {
+    bulkSaving.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 
 <template>
   <div class="p-4 space-y-4" v-loading="loading">
+    <el-card>
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="text-base font-semibold">统一版本号</span>
+        <el-input v-model="bulkVersion" placeholder="例如 0.0.9" style="width:180px" clearable @keyup.enter="applyBulkVersion" />
+        <el-button type="primary" :loading="bulkSaving" @click="applyBulkVersion">批量更新下载链接和版本</el-button>
+        <span class="text-sm text-gray-500">会更新 4 个下载链接和 2 个应用版本，单项编辑功能保留。</span>
+      </div>
+    </el-card>
+
     <template v-for="group in groupedList()" :key="group.label">
       <el-card>
         <template #header>

@@ -8,10 +8,12 @@ class AppDrawer extends StatelessWidget {
   const AppDrawer({
     super.key,
     required this.deviceId,
+    required this.inviteCode,
     required this.isRefreshingLines,
     required this.onLoginPressed,
     required this.onChatGptPressed,
     required this.onDevicesPressed,
+    required this.onInvitePressed,
     required this.onLogoutPressed,
     required this.onNoticesPressed,
     required this.onPurchasePressed,
@@ -23,10 +25,12 @@ class AppDrawer extends StatelessWidget {
   });
 
   final String deviceId;
+  final String inviteCode;
   final bool isRefreshingLines;
   final VoidCallback onLoginPressed;
   final VoidCallback onChatGptPressed;
   final VoidCallback onDevicesPressed;
+  final VoidCallback onInvitePressed;
   final VoidCallback onLogoutPressed;
   final VoidCallback onNoticesPressed;
   final VoidCallback onPurchasePressed;
@@ -142,7 +146,8 @@ class AppDrawer extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(Icons.copy_rounded, color: Colors.white70, size: 13),
+                        const Icon(Icons.copy_rounded,
+                            color: Colors.white70, size: 13),
                       ],
                     ),
                   ),
@@ -155,30 +160,44 @@ class AppDrawer extends StatelessWidget {
                 children: [
                   if (username == null || username!.isEmpty)
                     ListTile(
-                      leading: const Icon(Icons.account_circle_rounded, color: Color(0xFFE11D48), size: 24),
+                      leading: const Icon(Icons.account_circle_rounded,
+                          color: Color(0xFFE11D48), size: 24),
                       title: const Text(
                         '登录账号',
-                        style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700),
                       ),
-                      trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                      trailing: const Icon(Icons.chevron_right_rounded,
+                          size: 20, color: Colors.grey),
                       onTap: onLoginPressed,
                     )
                   else
                     ListTile(
-                      leading: const Icon(Icons.account_circle_rounded, color: Color(0xFFE11D48), size: 24),
+                      leading: const Icon(Icons.account_circle_rounded,
+                          color: Color(0xFFE11D48), size: 24),
                       title: Text(
                         '已登录：$username',
-                        style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700),
                       ),
                     ),
                   if (username != null && username!.isNotEmpty)
                     ListTile(
-                      leading: const Icon(Icons.devices_rounded, color: Color(0xFFE11D48), size: 24),
+                      leading: const Icon(Icons.devices_rounded,
+                          color: Color(0xFFE11D48), size: 24),
                       title: const Text(
                         '已登录设备',
-                        style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600),
                       ),
-                      trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                      trailing: const Icon(Icons.chevron_right_rounded,
+                          size: 20, color: Colors.grey),
                       onTap: () {
                         Navigator.of(context).pop();
                         onDevicesPressed();
@@ -186,10 +205,14 @@ class AppDrawer extends StatelessWidget {
                     ),
                   if (username != null && username!.isNotEmpty)
                     ListTile(
-                      leading: const Icon(Icons.logout_rounded, color: Color(0xFFE11D48), size: 24),
+                      leading: const Icon(Icons.logout_rounded,
+                          color: Color(0xFFE11D48), size: 24),
                       title: const Text(
                         '退出当前设备',
-                        style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600),
                       ),
                       onTap: () {
                         Navigator.of(context).pop();
@@ -211,48 +234,87 @@ class AppDrawer extends StatelessWidget {
                   // ),
                   if (false) // 消息通知入口暂时隐藏
                     ListTile(
-                    leading: const Icon(Icons.notifications_rounded, color: Color(0xFFE11D48), size: 24),
-                    title: const Text(
-                      '消息通知',
-                      style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                      leading: const Icon(Icons.notifications_rounded,
+                          color: Color(0xFFE11D48), size: 24),
+                      title: const Text(
+                        '消息通知',
+                        style: TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded,
+                          size: 20, color: Colors.grey),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        onNoticesPressed();
+                      },
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      onNoticesPressed();
-                    },
-                  ),
                   ListTile(
-                    leading: const Icon(Icons.shopping_bag_rounded, color: Color(0xFFE11D48), size: 24),
+                    leading: const Icon(Icons.shopping_bag_rounded,
+                        color: Color(0xFFE11D48), size: 24),
                     title: const Text(
                       '购买套餐',
-                      style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          color: Color(0xFF881337),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        size: 20, color: Colors.grey),
                     onTap: () {
                       Navigator.of(context).pop();
                       onPurchasePressed();
                     },
                   ),
                   ListTile(
-                    leading: const Icon(Icons.tune_rounded, color: Color(0xFFE11D48), size: 24),
+                    leading: const Icon(Icons.tune_rounded,
+                        color: Color(0xFFE11D48), size: 24),
                     title: const Text(
                       '线路配置',
-                      style: TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                          color: Color(0xFF881337),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600),
                     ),
                     trailing: isRefreshingLines
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFE11D48)),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Color(0xFFE11D48)),
                           )
                         : IconButton(
                             tooltip: '刷新线路',
-                            icon: const Icon(Icons.refresh_rounded, color: Color(0xFFE11D48), size: 20),
+                            icon: const Icon(Icons.refresh_rounded,
+                                color: Color(0xFFE11D48), size: 20),
                             onPressed: onRefreshLines,
                           ),
                     onTap: isRefreshingLines ? null : onRefreshLines,
                   ),
+                  if (username != null && username!.isNotEmpty)
+                    ListTile(
+                      leading: const Icon(Icons.card_giftcard_rounded,
+                          color: Color(0xFFE11D48), size: 24),
+                      title: const Text(
+                        '邀请有奖',
+                        style: TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: inviteCode.isNotEmpty
+                          ? Text('邀请码：$inviteCode',
+                              style: const TextStyle(
+                                  color: Color(0xFFBE5A74), fontSize: 12))
+                          : null,
+                      trailing: const Icon(Icons.chevron_right_rounded,
+                          size: 20, color: Colors.grey),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        onInvitePressed();
+                      },
+                    ),
                 ],
               ),
             ),

@@ -12,10 +12,12 @@ type User struct {
 	Status int8   `gorm:"default:1" json:"status"` // 1正常 0禁用
 
 	// 设备关联
-	DeviceID         string `gorm:"size:128;index" json:"device_id"`
-	FreeUsedSeconds  int    `gorm:"default:0" json:"free_used_seconds"`
-	FreeLimitSeconds int    `gorm:"default:2700" json:"free_limit_seconds"` // 45分钟
-	CurrentLineID    *uint  `gorm:"default:null;index" json:"current_line_id"`
+	DeviceID         string  `gorm:"size:128;index" json:"device_id"`
+	InviteCode       string  `gorm:"size:16;index" json:"invite_code"`
+	InviterID        *uint64 `gorm:"default:null;index" json:"inviter_id"`
+	FreeUsedSeconds  int     `gorm:"default:0" json:"free_used_seconds"`
+	FreeLimitSeconds int     `gorm:"default:2700" json:"free_limit_seconds"` // 45分钟
+	CurrentLineID    *uint   `gorm:"default:null;index" json:"current_line_id"`
 
 	// 当前套餐冗余字段（快速查询，避免 JOIN）
 	CurrentPlanID     *uint      `gorm:"default:null" json:"current_plan_id"`

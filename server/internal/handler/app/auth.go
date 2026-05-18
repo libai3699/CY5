@@ -10,6 +10,7 @@ import (
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -17,10 +18,11 @@ import (
 )
 
 type registerReq struct {
-	Username string `json:"username" binding:"required,min=6,max=32"`
-	Password string `json:"password" binding:"required,min=6,max=64"`
-	DeviceID string `json:"device_id" binding:"required"`
-	Phone    string `json:"phone"`
+	Username   string `json:"username" binding:"required,min=6,max=32"`
+	Password   string `json:"password" binding:"required,min=6,max=64"`
+	DeviceID   string `json:"device_id" binding:"required"`
+	Phone      string `json:"phone"`
+	InviteCode string `json:"invite_code"`
 }
 
 var (
@@ -54,6 +56,23 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	inviteCode, err := service.GenerateInviteCode(database.DB)
+	if err != nil {
+		handler.Fail(c, 500, "邀请码生成失败")
+		return
+	}
+
+	var inviterID *uint64
+	inviter, err := service.FindEligibleInviter(database.DB, req.InviteCode, req.DeviceID, deviceUserCount)
+	if err != nil {
+		fmt.Printf("[INVITE] resolve inviter failed code=%s device_id=%s err=%v\n", req.InviteCode, req.DeviceID, err)
+		handler.Fail(c, 500, "邀请码校验失败")
+		return
+	}
+	if inviter != nil {
+		inviterID = &inviter.ID
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	if err != nil {
 		handler.Fail(c, 500, "服务器错误")
@@ -72,6 +91,8 @@ func Register(c *gin.Context) {
 		Password:         string(hash),
 		Phone:            req.Phone,
 		DeviceID:         req.DeviceID,
+		InviteCode:       inviteCode,
+		InviterID:        inviterID,
 		Status:           1,
 		FreeUsedSeconds:  0,
 		FreeLimitSeconds: freeLimitSeconds,
@@ -94,6 +115,11 @@ func Register(c *gin.Context) {
 	}
 
 	writeUserLoginLog(c, user.ID, req.DeviceID, 1, "")
+	if inviterID != nil {
+		if err := service.GrantRegisterReward(database.DB, *inviterID, user.ID, req.DeviceID); err != nil {
+			fmt.Printf("[INVITE] register reward failed inviter_id=%d invitee_id=%d err=%v\n", *inviterID, user.ID, err)
+		}
+	}
 
 	handler.OK(c, gin.H{
 		"token": token,
@@ -255,6 +281,8 @@ func safeUser(u model.User) gin.H {
 		"username":            u.Username,
 		"phone":               u.Phone,
 		"device_id":           u.DeviceID,
+		"invite_code":         u.InviteCode,
+		"inviter_id":          u.InviterID,
 		"free_used_seconds":   u.FreeUsedSeconds,
 		"free_limit_seconds":  u.FreeLimitSeconds,
 		"free_remaining":      freeRemaining(u),

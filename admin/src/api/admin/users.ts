@@ -6,6 +6,7 @@ export interface User {
   phone: string;
   status: number;
   device_id: string;
+  display_id?: string;
   free_used_seconds: number;
   free_limit_seconds: number;
   current_line_id: number | null;
@@ -13,6 +14,8 @@ export interface User {
   plan_expired_at: string | null;
   traffic_used_bytes: number;
   traffic_limit_bytes: number | null;
+  last_ip?: string;
+  last_ip_detail?: { is_private?: boolean; location?: string; type?: string } | null;
   last_login_at: string | null;
   created_at: string;
 }

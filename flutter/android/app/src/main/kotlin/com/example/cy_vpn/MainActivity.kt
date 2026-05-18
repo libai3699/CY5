@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
 import android.os.Environment
@@ -22,12 +23,17 @@ import java.io.IOException
 class MainActivity : FlutterActivity() {
     private val channelName = "9.9/native"
     private val statusChannelName = "9.9/vpn_status"
+    private val trafficChannelName = "9.9/traffic"
 
     private var pendingVpnResult: MethodChannel.Result? = null
     private var pendingGallerySaveResult: MethodChannel.Result? = null
     private var pendingGallerySaveRequest: PendingGallerySaveRequest? = null
     private var pendingNotificationResult: MethodChannel.Result? = null
     private var statusEventSink: EventChannel.EventSink? = null
+    
+    // Traffic tracking
+    private var trafficBaselineBytes: Long = 0
+    private var isTrackingTraffic: Boolean = false
 
     companion object {
         private const val VPN_PERMISSION_REQUEST_CODE = 1001
@@ -72,6 +78,26 @@ class MainActivity : FlutterActivity() {
 
                     "ensureNotificationPermission" -> {
                         ensureNotificationPermission(result)
+                    }
+                    
+                    "getTrafficBytes" -> {
+                        val totalBytes = getTotalTrafficBytes()
+                        result.success(totalBytes)
+                    }
+                    
+                    "resetTrafficBaseline" -> {
+                        resetTrafficBaseline()
+                        result.success(null)
+                    }
+                    
+                    "startTrafficTracking" -> {
+                        startTrafficTracking()
+                        result.success(null)
+                    }
+                    
+                    "stopTrafficTracking" -> {
+                        stopTrafficTracking()
+                        result.success(null)
                     }
 
                     "startVpn" -> {
@@ -305,5 +331,65 @@ class MainActivity : FlutterActivity() {
                 )
             )
         }
+    }
+    
+    // Traffic tracking methods using Android TrafficStats API
+    private fun getTotalTrafficBytes(): Long {
+        if (!isTrackingTraffic) {
+            return 0
+        }
+        
+        try {
+            // Get total device traffic (all apps)
+            val totalRx = TrafficStats.getTotalRxBytes()
+            val totalTx = TrafficStats.getTotalTxBytes()
+            
+            if (totalRx == TrafficStats.UNSUPPORTED.toLong() || totalTx == TrafficStats.UNSUPPORTED.toLong()) {
+                Log.w(TAG, "TrafficStats not supported on this device")
+                return 0
+            }
+            
+            val currentTotal = totalRx + totalTx
+            val trafficSinceBaseline = currentTotal - trafficBaselineBytes
+            
+            // Sanity check: if negative or too large, reset baseline
+            if (trafficSinceBaseline < 0 || trafficSinceBaseline > 10L * 1024 * 1024 * 1024) {
+                Log.w(TAG, "Traffic delta out of range: $trafficSinceBaseline, resetting baseline")
+                trafficBaselineBytes = currentTotal
+                return 0
+            }
+            
+            Log.d(TAG, "Traffic: current=$currentTotal, baseline=$trafficBaselineBytes, delta=$trafficSinceBaseline")
+            return trafficSinceBaseline
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get traffic stats", e)
+            return 0
+        }
+    }
+    
+    private fun resetTrafficBaseline() {
+        try {
+            val totalRx = TrafficStats.getTotalRxBytes()
+            val totalTx = TrafficStats.getTotalTxBytes()
+            
+            if (totalRx != TrafficStats.UNSUPPORTED.toLong() && totalTx != TrafficStats.UNSUPPORTED.toLong()) {
+                trafficBaselineBytes = totalRx + totalTx
+                Log.d(TAG, "Traffic baseline reset to: $trafficBaselineBytes")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to reset traffic baseline", e)
+        }
+    }
+    
+    private fun startTrafficTracking() {
+        isTrackingTraffic = true
+        resetTrafficBaseline()
+        Log.d(TAG, "Traffic tracking started")
+    }
+    
+    private fun stopTrafficTracking() {
+        isTrackingTraffic = false
+        trafficBaselineBytes = 0
+        Log.d(TAG, "Traffic tracking stopped")
     }
 }

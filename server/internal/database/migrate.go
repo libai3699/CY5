@@ -5,6 +5,7 @@ import (
 
 	"cy5vpn/server/internal/config"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/service"
 )
 
 // Migrate 自动建表
@@ -16,6 +17,7 @@ func Migrate() {
 		&model.Plan{},
 		&model.VpnLine{},
 		&model.OrderRecord{},
+		&model.InviteRewardLog{},
 		&model.AppConfig{},
 		&model.Notice{},
 		&model.UserLoginLog{},
@@ -37,6 +39,7 @@ func Migrate() {
 	seedConfigs()
 	seedQuotes()
 	seedPaymentConfigs()
+	backfillInviteCodes()
 }
 
 // seedAdmin 初始化管理员账号（幂等）
@@ -157,4 +160,25 @@ func seedPaymentConfigs() {
 		DB.Where(model.PaymentConfig{Type: cfg.Type}).FirstOrCreate(&cfg)
 	}
 	log.Println("[migrate] 支付配置初始数据写入完成")
+}
+
+func backfillInviteCodes() {
+	var users []model.User
+	if err := DB.Where("invite_code = '' OR invite_code IS NULL").Find(&users).Error; err != nil {
+		log.Printf("[migrate] 查询邀请码待补用户失败: %v", err)
+		return
+	}
+	for _, user := range users {
+		code, err := service.GenerateInviteCode(DB)
+		if err != nil {
+			log.Printf("[migrate] 用户 %d 邀请码生成失败: %v", user.ID, err)
+			continue
+		}
+		if err := DB.Model(&model.User{}).Where("id = ?", user.ID).Update("invite_code", code).Error; err != nil {
+			log.Printf("[migrate] 用户 %d 邀请码回填失败: %v", user.ID, err)
+		}
+	}
+	if len(users) > 0 {
+		log.Printf("[migrate] 已回填邀请码用户数: %d", len(users))
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -100,6 +101,9 @@ func CreateOrder(c *gin.Context) {
 		gb := *plan.TrafficGB * months
 		trafficGB = &gb
 		bytes := int64(gb) * 1024 * 1024 * 1024
+		if user.TrafficLimitBytes != nil && *user.TrafficLimitBytes > user.TrafficUsedBytes {
+			bytes += *user.TrafficLimitBytes - user.TrafficUsedBytes
+		}
 		trafficLimit = &bytes
 	}
 
@@ -125,6 +129,9 @@ func CreateOrder(c *gin.Context) {
 		"traffic_used_bytes":  0,
 		"traffic_limit_bytes": trafficLimit,
 	})
+	if err := service.GrantPurchaseReward(database.DB, user, order.ID); err != nil {
+		println("[INVITE] purchase reward failed:", err.Error())
+	}
 
 	handler.OK(c, gin.H{"msg": "开通成功", "order": order})
 }

@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,13 +14,14 @@ import 'components/quote_card.dart';
 import 'components/vpn_control_panel.dart';
 import 'contact_page.dart';
 import 'data/auth_service.dart';
-import 'data/api_config.dart';
 import 'data/contact_service.dart';
 import 'data/device_identity.dart';
 import 'data/node_speed_tester.dart';
 import 'data/remote_app_loader.dart'
     show RemoteAppLoader, TokenExpiredException;
 import 'data/remote_vpn_line_loader.dart';
+import 'data/usage_reporter.dart';
+import 'invite_reward_page.dart';
 import 'login_devices_page.dart';
 import 'models/app_status.dart';
 import 'models/vpn_node.dart';
@@ -44,6 +43,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   final RemoteAppLoader _appLoader = const RemoteAppLoader();
   final DeviceIdentity _deviceIdentity = const DeviceIdentity();
   final AuthService _authService = const AuthService();
+  final UsageReporter _usageReporter = const UsageReporter();
   final NodeSpeedTester _speedTester = const NodeSpeedTester();
 
   List<VpnNode> _nodes = const [];
@@ -65,13 +65,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Timer? _appStatusRefreshTimer;
   Timer? _heartbeatTimer;
   Timer? _uiRefreshTimer;
+  Timer? _localUsageTimer;
   Timer? _remainingTimer;
   StreamSubscription<String>? _statusSubscription;
-  int _heartbeatFailCount = 0; // 心跳失败计数
   int _pendingTrafficBytes = 0; // 未成功上报的累计流量
-  int _pendingSeconds = 0; // 未成功上报的累计时长
-
-  bool _isHeartbeatInFlight = false;
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
@@ -91,6 +88,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
     _statusSubscription?.cancel();
     _appStatusRefreshTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _uiRefreshTimer?.cancel();
+    _localUsageTimer?.cancel();
     _remainingTimer?.cancel();
     super.dispose();
   }
@@ -102,6 +101,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         setState(() {
           _session = session;
         });
+        unawaited(_flushCachedUsage(session.token));
       }
     } catch (_) {}
     unawaited(_loadAppData());
@@ -162,6 +162,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
                 _status = VpnStatus.connected;
                 _message = '${_selectedNode?.name ?? "VPN"} 已连接';
               });
+              unawaited(_usageReporter.markConnected());
               _syncHeartbeatTimer();
             }
             break;
@@ -172,6 +173,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
             });
             _heartbeatTimer?.cancel();
             _uiRefreshTimer?.cancel();
+            _localUsageTimer?.cancel();
+            unawaited(_collectAndFlushUsage());
             break;
         }
       },
@@ -329,158 +332,113 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   void _syncStatusRefreshTimer() {
     _appStatusRefreshTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted) _loadAppData();
+      if (mounted && !_isConnected) _loadAppData();
     });
   }
 
   void _syncHeartbeatTimer() {
     _heartbeatTimer?.cancel();
     _uiRefreshTimer?.cancel();
-    _heartbeatFailCount = 0; // 重置失败计数
-    _isHeartbeatInFlight = false;
+    _localUsageTimer?.cancel();
     _pendingTrafficBytes = 0;
-    _pendingSeconds = 0;
-    print('[HEARTBEAT] disabled while vpn is connected');
-    /*
-    _sendHeartbeat(seconds: 1);
-    // 改为30秒心跳间隔，避免VPN在心跳前断开
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (mounted) _sendHeartbeat(seconds: 30);
-    });
-    */
+    print('[HEARTBEAT] starting heartbeat timer');
+    unawaited(VpnNativeChannel.resetTrafficBaseline());
 
-    // 启动秒级UI刷新，用于前端乐观更新流量显示
-    _uiRefreshTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // 每30秒采集本地流量增量
+    _localUsageTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(_collectLocalUsage());
+    });
+
+    // 每60秒发送心跳，上报流量到服务器并刷新状态
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_sendHeartbeat());
+    });
+
+    // 每5秒刷新UI，显示最新流量余额
+    _uiRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted && _isConnected) {
         setState(() {}); // 触发 _displayTrafficRemaining 重新计算
       }
     });
   }
 
-  Future<void> _sendHeartbeat({required int seconds}) async {
+  /// 发送心跳，上报流量到服务器并刷新用户状态
+  Future<void> _sendHeartbeat() async {
+    if (!_isConnected) return;
     final token = _session?.token;
-    if (token == null || token.isEmpty || !_isConnected) return;
+    if (token == null || token.isEmpty) return;
 
-    // 获取本次心跳周期内的流量增量并累加到 pending
-    final trafficDelta = VpnNativeChannel.consumeTrafficDelta();
-    _pendingTrafficBytes += trafficDelta;
-    _pendingSeconds += seconds;
-
-    print(
-        '[HEARTBEAT] delta=${_formatBytes(trafficDelta)} pending=${_formatBytes(_pendingTrafficBytes)} secs=$_pendingSeconds');
-
-    if (_isHeartbeatInFlight) {
-      print('[HEARTBEAT] skip send, previous request still in flight');
-      return;
-    }
-    _isHeartbeatInFlight = true;
-
-    // 服务端对单次 seconds 有 65 秒上限，只截断秒数，流量不截断
-    final secondsToSend = _pendingSeconds > 60 ? 60 : _pendingSeconds;
-    final bytesToSend = _pendingTrafficBytes;
-
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      print(
-          '[HEARTBEAT] send start bytes=${_formatBytes(bytesToSend)} secs=$secondsToSend');
-      final request = await client
-          .postUrl(Uri.parse(kUserHeartbeatApiUrl))
-          .timeout(const Duration(seconds: 8));
-      request.headers.contentType = ContentType.json;
-      request.headers.set('Authorization', 'Bearer $token');
-      request.write(jsonEncode({
-        'seconds': secondsToSend,
-        'traffic_bytes': bytesToSend,
-      }));
-      final response =
-          await request.close().timeout(const Duration(seconds: 8));
-      final body = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 8));
-
-      if (response.statusCode == 401) {
-        print('[HEARTBEAT] 401 body: $body token=${_maskToken(token)}');
-        _heartbeatFailCount++;
-        return;
-      }
-
-      bool serverConfirmed = false;
-      Map<String, dynamic>? data;
-      try {
-        final decoded = jsonDecode(body);
-        if (decoded is Map<String, dynamic>) {
-          serverConfirmed = decoded['code'] == 0 || decoded['code'] == 200;
-          data = decoded['data'] as Map<String, dynamic>?;
-        }
-      } catch (_) {}
-
-      if (response.statusCode >= 200 &&
-          response.statusCode < 300 &&
-          serverConfirmed) {
-        // 服务端确认，扣除已上报部分
-        _pendingTrafficBytes = (_pendingTrafficBytes - bytesToSend)
-            .clamp(0, double.maxFinite.toInt());
-        _pendingSeconds = (_pendingSeconds - secondsToSend)
-            .clamp(0, double.maxFinite.toInt());
-        _heartbeatFailCount = 0;
-        print(
-            '[HEARTBEAT] ✅ confirmed, remaining pending=${_formatBytes(_pendingTrafficBytes)}');
-      } else {
-        _heartbeatFailCount++;
-        print('[HEARTBEAT] ❌ server rejected (count=$_heartbeatFailCount)');
-      }
-
-      // 更新 UI 状态
-      if (data != null && mounted) {
-        final trafficRemaining = data['traffic_remaining']?.toString();
-        final remainingSeconds =
-            int.tryParse(data['remaining_seconds']?.toString() ?? '');
-        final remainingTimeText = data['remaining_time_text']?.toString();
-        final trafficExhausted = data['traffic_exhausted'] == true;
-
+      print('[HEARTBEAT] sending heartbeat...');
+      // ✅ 只调用一次 collectHeartbeatTraffic，避免重复统计
+      // 不再调用 _collectLocalUsage()，因为 collectHeartbeatTraffic 内部会调用 pollTrafficDelta
+      await _usageReporter.collectHeartbeatTraffic(); // 收集流量但保持会话活跃
+      await _usageReporter.flush(token); // 上报到服务器并清空缓存
+      
+      // ✅ 上报成功后，重置所有计数器
+      if (mounted) {
         setState(() {
-          _appStatus = AppStatus(
-            planLevel: _appStatus.planLevel,
-            remainingSeconds: remainingSeconds ?? _appStatus.remainingSeconds,
-            remainingTimeText:
-                remainingTimeText ?? _appStatus.remainingTimeText,
-            trafficRemaining: trafficRemaining ?? _appStatus.trafficRemaining,
-          );
+          _pendingTrafficBytes = 0;
         });
-
-        if (_keepVpnConnected && trafficExhausted && _isConnected) {
-          print('[HEARTBEAT] traffic exhausted, keep vpn connected');
-          if (mounted) setState(() => _message = '流量已用完，当前连接保持中');
-          return;
-        }
-
-        if (!_keepVpnConnected && trafficExhausted && _isConnected) {
-          print('[HEARTBEAT] ⚠️ traffic exhausted, disconnecting');
-          await _disconnect();
-          if (mounted) setState(() => _message = '流量已用完，请购买套餐');
-          _openPurchasePage();
-          return;
-        }
       }
-
-      if (!_hasActivePlan && _appStatus.remainingSeconds <= 0 && _isConnected) {
-        print('[HEARTBEAT] remaining time exhausted, keep vpn connected');
-        if (mounted) {
+      
+      // ✅ 重置VPN底层的流量基线，避免重复统计
+      await VpnNativeChannel.resetTrafficBaseline();
+      
+      // 刷新用户状态，获取最新余额
+      try {
+        final status = await _appLoader.loadUserStatus(token);
+        if (mounted && _isConnected) {
           setState(() {
-            _message = '试用已结束，当前连接保持中';
+            _appStatus = status;
           });
+          print('[HEARTBEAT] status refreshed, traffic_remaining=${status.trafficRemaining}');
         }
+      } catch (e) {
+        print('[HEARTBEAT] status refresh failed: $e');
       }
+      
+      print('[HEARTBEAT] heartbeat sent successfully, all counters reset');
     } catch (e) {
-      _heartbeatFailCount++;
-      print('[HEARTBEAT] ❌ exception (count=$_heartbeatFailCount): $e');
-      // 心跳失败不断开 VPN，pending 数据保留下次重试
-    } finally {
-      client.close(force: true);
-      _isHeartbeatInFlight = false;
-      print('[HEARTBEAT] send end');
+      print('[HEARTBEAT] send failed: $e');
     }
+  }
+
+  Future<void> _collectLocalUsage() async {
+    if (!_isConnected) return;
+    final delta = await VpnNativeChannel.pollTrafficDelta();
+    if (delta <= 0) return;
+    unawaited(_usageReporter.addPendingTraffic(delta));
+    if (!mounted || !_isConnected) return;
+    setState(() {
+      _pendingTrafficBytes += delta;
+    });
+    print('[USAGE] local +$delta bytes, pending=$_pendingTrafficBytes');
+  }
+
+  Future<void> _flushCachedUsage(String? token) async {
+    await _usageReporter.collectAbandonedSession();
+    await _usageReporter.flush(token);
+    // ✅ 上报后重置VPN底层的流量基线
+    await VpnNativeChannel.resetTrafficBaseline();
+    print('[USAGE] cached usage flushed and baseline reset');
+  }
+
+  Future<void> _collectAndFlushUsage() async {
+    // ✅ 只调用一次 collectCurrentSession，避免重复统计
+    await _usageReporter.collectCurrentSession();
+    await _usageReporter.flush(_session?.token).timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => print('[USAGE] disconnect flush timeout, keep flow'),
+        );
+    // ✅ 断开后重置所有计数器
+    await VpnNativeChannel.resetTrafficBaseline();
+    if (mounted) {
+      setState(() {
+        _pendingTrafficBytes = 0;
+      });
+    }
+    print('[USAGE] disconnect flush completed, all counters reset');
   }
 
   void _applySessionStatus(AuthSession session) {
@@ -500,14 +458,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     final days = hours ~/ 24;
     final restHours = hours % 24;
     return restHours > 0 ? '$days天 $restHours小时' : '$days天';
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(2)} KB';
-    if (bytes < 1024 * 1024 * 1024)
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(3)} GB';
   }
 
   Future<void> _loadNodes() async {
@@ -540,6 +490,16 @@ class _VpnHomePageState extends State<VpnHomePage> {
         }
         _message = '线路加载失败，请点击重试';
       });
+    }
+  }
+
+  Future<void> _refreshHome() async {
+    if (_isConnected) return;
+    setState(() => _quoteKey++);
+    try {
+      await _loadAppData().timeout(const Duration(seconds: 3));
+    } catch (error) {
+      print('[REFRESH_HOME] status refresh skipped: $error');
     }
   }
 
@@ -637,6 +597,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
     });
 
     try {
+      await _flushCachedUsage(session.token).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () =>
+            print('[USAGE] pre-connect flush timeout, continue vpn'),
+      );
       final prepareResult = await _vpnChannel.prepareVpn();
       if (prepareResult != null) {
         setState(() {
@@ -671,6 +636,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   Future<void> _disconnect() async {
     _heartbeatTimer?.cancel();
+    _localUsageTimer?.cancel();
+    await _collectLocalUsage();
+    await _usageReporter.collectCurrentSession();
     setState(() {
       _status = VpnStatus.connecting;
       _message = '正在断开...';
@@ -681,6 +649,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
     } catch (error) {
       print('[DISCONNECT] error: $error');
     } finally {
+      await _usageReporter.flush(_session?.token).timeout(
+            const Duration(seconds: 3),
+            onTimeout: () =>
+                print('[USAGE] disconnect flush timeout, continue'),
+          );
       // 无论如何都强制设置为断开状态
       if (mounted) {
         setState(() {
@@ -763,7 +736,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
     // 清空未上报流量缓存
     _pendingTrafficBytes = 0;
-    _pendingSeconds = 0;
 
     // 关闭 Drawer
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
@@ -805,6 +777,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (token == null || token.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => LoginDevicesPage(token: token)),
+    );
+  }
+
+  void _openInviteRewardPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            InviteRewardPage(inviteCode: _session?.inviteCode ?? ''),
+      ),
     );
   }
 
@@ -916,7 +897,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         if (newBytes < 1024 * 1024 * 1024) {
           return '${(newBytes / 1024 / 1024).toStringAsFixed(2)} MB';
         } else {
-          return '${(newBytes / 1024 / 1024 / 1024).toStringAsFixed(3)} GB';
+          return '${(newBytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
         }
       }
     } catch (e) {
@@ -932,10 +913,18 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
         return '无限流量';
       }
-      // 乐观更新：减去已出账但还没发给服务端的流量
-      final totalPending =
-          _pendingTrafficBytes + VpnNativeChannel.unconsumedBytes;
-      return _calculateOptimisticTraffic(text, totalPending);
+      
+      // 简化逻辑：直接显示后端返回的值
+      // 因为现在有心跳定时器（每60秒），后端数据会及时更新
+      // 只对未上报的流量（最多60秒内的）进行乐观更新
+      if (!_isConnected) return text;
+      
+      // 只显示当前未消费的流量增量（秒级更新）
+      final unconsumedBytes = VpnNativeChannel.unconsumedBytes;
+      if (unconsumedBytes <= 0) return text;
+      
+      // 乐观更新：减去实时流量增量（不包括已累积的 _pendingTrafficBytes）
+      return _calculateOptimisticTraffic(text, unconsumedBytes);
     } catch (_) {
       return _appStatus.trafficRemaining;
     }
@@ -947,10 +936,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
       key: _scaffoldKey,
       drawer: AppDrawer(
         deviceId: _deviceId.isEmpty ? '读取中' : _deviceId,
+        inviteCode: _session?.inviteCode ?? '',
         isRefreshingLines: _isRefreshingLines,
         onChatGptPressed: _openChatGptPage,
         onLoginPressed: _openAuthPage,
         onDevicesPressed: _openLoginDevicesPage,
+        onInvitePressed: _openInviteRewardPage,
         onLogoutPressed: _logoutCurrentDevice,
         onNoticesPressed: _openNoticesPage,
         onPurchasePressed: _openPurchasePage,
@@ -989,7 +980,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
               NoticeBar(
                 token: _session?.token,
                 onStatusUpdate: (msg) {
-                  _loadAppData();
+                  if (!_isConnected) _loadAppData();
                   if (!mounted) return;
                   showDialog<void>(
                     context: context,
@@ -1045,13 +1036,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
               Expanded(
                 child: RefreshIndicator(
                   color: const Color(0xFFE11D48),
-                  onRefresh: _isConnected
-                      ? () async {}
-                      : () async {
-                          setState(() => _quoteKey++);
-                          await _loadAppData();
-                          await _loadNodes();
-                        },
+                  onRefresh: _refreshHome,
                   child: VpnControlPanel(
                     status: _status,
                     node: _selectedNode,

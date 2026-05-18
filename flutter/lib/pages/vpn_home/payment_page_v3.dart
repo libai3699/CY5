@@ -57,10 +57,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   @override
   void initState() {
     super.initState();
-    // 生成随机金额标识（原价 - 0.001~0.003，避免用户多付）
+    // ✅ 生成随机金额标识：9.87/88/89/90 四选一
     final random = Random();
-    final millis = random.nextInt(3) + 1; // 1-3
-    _paymentAmount = widget.totalPrice - (millis / 1000);
+    final cents = [87, 88, 89, 90][random.nextInt(4)];
+    _paymentAmount = widget.totalPrice - (100 - cents) / 100; // 例如：10 - 0.13 = 9.87
     _usdtAmount = _paymentAmount / _usdtRate; // 初始化 USDT 金额
 
     _loadPaymentConfigs();
@@ -361,7 +361,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '¥${_paymentAmount.toStringAsFixed(3)}',
+                        '¥${_paymentAmount.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Color(0xFFE11D48),
                           fontSize: 26,
@@ -369,7 +369,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                         ),
                       ),
                       Text(
-                        '≈ ${_usdtAmount.toStringAsFixed(3)} USDT',
+                        '≈ ${_usdtAmount.toStringAsFixed(2)} USDT',
                         style: TextStyle(
                           color: const Color(0xFF9F1239).withOpacity(0.7),
                           fontSize: 12,
@@ -573,7 +573,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '\u00A5${_paymentAmount.toStringAsFixed(3)}',
+                        '\u00A5${_paymentAmount.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Color(0xFFE11D48),
                           fontSize: 26,
@@ -581,7 +581,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                         ),
                       ),
                       Text(
-                        '~ ${_usdtAmount.toStringAsFixed(3)} USDT',
+                        '~ ${_usdtAmount.toStringAsFixed(2)} USDT',
                         style: TextStyle(
                           color: const Color(0xFF9F1239).withOpacity(0.7),
                           fontSize: 12,

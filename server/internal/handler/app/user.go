@@ -268,7 +268,7 @@ func RemoveLoginDevice(c *gin.Context) {
 
 func formatGB(bytes int64) string {
 	gb := float64(bytes) / 1024 / 1024 / 1024
-	return strconv.FormatFloat(gb, 'f', 3, 64) + " GB"
+	return strconv.FormatFloat(gb, 'f', 2, 64) + " GB"
 }
 
 // userHasPlan 判断用户是否有有效套餐（只要 plan_expired_at 未过期即可）

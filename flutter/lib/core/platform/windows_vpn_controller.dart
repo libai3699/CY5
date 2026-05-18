@@ -68,19 +68,44 @@ class WindowsVpnController {
       final stats = decoded['stats'];
       if (stats is! Map) return;
 
-      var upload = 0;
-      var download = 0;
+      var inboundUpload = 0;
+      var inboundDownload = 0;
+      var outboundUpload = 0;
+      var outboundDownload = 0;
       for (final entry in stats.entries) {
         final key = entry.key.toString();
         final value = (entry.value as num?)?.toInt() ?? 0;
+        final isInbound = key.contains('inbound>>>');
+        final isOutbound = key.contains('outbound>>>');
         if (key.contains('uplink')) {
-          upload += value;
+          if (isOutbound) {
+            outboundUpload += value;
+          } else if (isInbound) {
+            inboundUpload += value;
+          }
         } else if (key.contains('downlink')) {
-          download += value;
+          if (isOutbound) {
+            outboundDownload += value;
+          } else if (isInbound) {
+            inboundDownload += value;
+          }
         }
       }
-      _totalUploadBytes = upload;
-      _totalDownloadBytes = download;
+
+      final inboundTotal = inboundUpload + inboundDownload;
+      final outboundTotal = outboundUpload + outboundDownload;
+      if (inboundTotal > 0 && outboundTotal > 0) {
+        if (outboundTotal <= inboundTotal) {
+          _totalUploadBytes = outboundUpload;
+          _totalDownloadBytes = outboundDownload;
+        } else {
+          _totalUploadBytes = inboundUpload;
+          _totalDownloadBytes = inboundDownload;
+        }
+      } else {
+        _totalUploadBytes = outboundUpload + inboundUpload;
+        _totalDownloadBytes = outboundDownload + inboundDownload;
+      }
     } catch (_) {
       // Stats API is optional on Windows; ignore when unavailable.
     } finally {

@@ -18,6 +18,7 @@ class _AuthPageState extends State<AuthPage> {
   final _auth = const AuthService();
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _inviteCode = TextEditingController();
   bool _loading = false;
   bool _obscurePassword = true;
   String? _message;
@@ -28,12 +29,14 @@ class _AuthPageState extends State<AuthPage> {
   void dispose() {
     _username.dispose();
     _password.dispose();
+    _inviteCode.dispose();
     super.dispose();
   }
 
   Future<void> _submit(bool register) async {
     final username = _username.text.trim();
     final password = _password.text;
+    final inviteCode = _inviteCode.text.trim();
     print(
         '[AUTH_PAGE] submit start mode=${register ? "register" : "login"} username=$username');
 
@@ -77,7 +80,11 @@ class _AuthPageState extends State<AuthPage> {
 
     try {
       final session = register
-          ? await _auth.register(username: username, password: password)
+          ? await _auth.register(
+              username: username,
+              password: password,
+              inviteCode: inviteCode,
+            )
           : await _auth.login(username: username, password: password);
       print(
           '[AUTH_PAGE] submit success mode=${register ? "register" : "login"} username=$username');
@@ -215,6 +222,17 @@ class _AuthPageState extends State<AuthPage> {
                       if (_passwordError != null)
                         setState(() => _passwordError = null);
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _inviteCode,
+                    textInputAction: TextInputAction.done,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(
+                      labelText: '邀请码（注册选填）',
+                      prefixIcon: Icon(Icons.card_giftcard_rounded),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   // 错误提示
                   if (_message != null) ...[
