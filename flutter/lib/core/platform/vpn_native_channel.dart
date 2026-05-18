@@ -110,6 +110,12 @@ class VpnNativeChannel {
   Future<String?> prepareVpn() async {
     if (kIsWeb) return null;
     if (!Platform.isAndroid) return null;
+    const channel = MethodChannel('9.9/native');
+    final notificationError =
+        await channel.invokeMethod<String>('ensureNotificationPermission');
+    if (notificationError != null && notificationError.isNotEmpty) {
+      return notificationError;
+    }
     await _ensureInitialized();
     final granted = await _v2ray!.requestPermission();
     if (!granted) return 'VPN 权限被拒绝';

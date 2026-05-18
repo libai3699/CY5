@@ -26,11 +26,13 @@ class MainActivity : FlutterActivity() {
     private var pendingVpnResult: MethodChannel.Result? = null
     private var pendingGallerySaveResult: MethodChannel.Result? = null
     private var pendingGallerySaveRequest: PendingGallerySaveRequest? = null
+    private var pendingNotificationResult: MethodChannel.Result? = null
     private var statusEventSink: EventChannel.EventSink? = null
 
     companion object {
         private const val VPN_PERMISSION_REQUEST_CODE = 1001
         private const val GALLERY_PERMISSION_REQUEST_CODE = 1002
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1003
         private const val TAG = "MainActivity"
     }
 
@@ -66,6 +68,10 @@ class MainActivity : FlutterActivity() {
                             pendingVpnResult = result
                             startActivityForResult(prepareIntent, VPN_PERMISSION_REQUEST_CODE)
                         }
+                    }
+
+                    "ensureNotificationPermission" -> {
+                        ensureNotificationPermission(result)
                     }
 
                     "startVpn" -> {
@@ -154,9 +160,21 @@ class MainActivity : FlutterActivity() {
         grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != GALLERY_PERMISSION_REQUEST_CODE) {
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            val pendingResult = pendingNotificationResult
+            pendingNotificationResult = null
+            if (pendingResult == null) {
+                return
+            }
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                pendingResult.success(null)
+            } else {
+                pendingResult.success("请允许通知权限，否则 VPN 会被系统关闭")
+            }
             return
         }
+
+        if (requestCode != GALLERY_PERMISSION_REQUEST_CODE) return
 
         val pendingResult = pendingGallerySaveResult
         val pendingRequest = pendingGallerySaveRequest
@@ -185,6 +203,29 @@ class MainActivity : FlutterActivity() {
             Log.d(TAG, "sendVpnStatus: $status")
             statusEventSink?.success(status)
         }
+    }
+
+    private fun ensureNotificationPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            result.success(null)
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(null)
+            return
+        }
+
+        pendingNotificationResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            NOTIFICATION_PERMISSION_REQUEST_CODE,
+        )
     }
 
     private fun saveImageToGallery(

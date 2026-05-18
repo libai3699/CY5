@@ -64,3 +64,7 @@
 -keepattributes *Annotation*
 -keepattributes Signature
 -keepattributes SourceFile,LineNumberTable
+
+# Keep actual flutter_v2ray package used by pub.dev flutter_v2ray 1.0.10.
+-keep class com.github.blueboytm.flutter_v2ray.** { *; }
+-dontwarn com.github.blueboytm.flutter_v2ray.**
