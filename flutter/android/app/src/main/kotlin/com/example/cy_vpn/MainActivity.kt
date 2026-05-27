@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
@@ -136,6 +137,11 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
 
+                    "openExternalUrl" -> {
+                        val url = call.argument<String>("url") ?: ""
+                        openExternalUrl(url, result)
+                    }
+
                     "getAndroidId" -> {
                         val androidId = Settings.Secure.getString(
                             contentResolver,
@@ -252,6 +258,30 @@ class MainActivity : FlutterActivity() {
             arrayOf(Manifest.permission.POST_NOTIFICATIONS),
             NOTIFICATION_PERMISSION_REQUEST_CODE,
         )
+    }
+
+    private fun openExternalUrl(url: String, result: MethodChannel.Result) {
+        if (url.isBlank()) {
+            result.success("URL is empty")
+            return
+        }
+
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            }
+
+            if (intent.resolveActivity(packageManager) == null) {
+                result.success("No browser found")
+                return
+            }
+
+            startActivity(intent)
+            result.success(null)
+        } catch (error: Exception) {
+            Log.e(TAG, "openExternalUrl failed", error)
+            result.success(error.message ?: "Open browser failed")
+        }
     }
 
     private fun saveImageToGallery(

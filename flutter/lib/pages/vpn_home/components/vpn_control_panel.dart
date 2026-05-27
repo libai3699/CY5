@@ -39,7 +39,8 @@ class VpnControlPanel extends StatelessWidget {
     final screenHeight = MediaQuery.sizeOf(context).height;
     final compact = screenHeight < 720;
     final statusText = switch (status) {
-      VpnStatus.disconnected => '点击连接',
+      VpnStatus.disconnected =>
+        isLoadingNodes ? '线路测速中' : '点击连接',
       VpnStatus.connecting => '连接中',
       VpnStatus.connected => '点击关闭',
     };

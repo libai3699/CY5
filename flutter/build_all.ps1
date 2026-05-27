@@ -1,252 +1,429 @@
 param(
-    [string]$FlutterCommand = ''
+    [ValidateSet('all', 'android', 'windows')]
+    [string]$Target = 'all'
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $root
+$projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $projectRoot
 
-function Get-FlutterVersionName {
-    $propertiesPath = Join-Path $root 'android/local.properties'
-    if (-not (Test-Path -LiteralPath $propertiesPath)) {
-        return '1.0.0'
+$expectedFlutterVersion = '3.27.0'
+$preferredFlutter = Join-Path $projectRoot ".fvm\versions\$expectedFlutterVersion\bin\flutter.bat"
+$linkedFlutter = Join-Path $projectRoot '.fvm\flutter_sdk\bin\flutter.bat'
+$installerScript = Join-Path $projectRoot 'windows_installer.iss'
+$appPublisher = '9.9 Company, Inc.'
+$appUrl = 'https://jsq.wangwei.tech/'
+
+function Get-FlutterCommand {
+    if (Test-Path $preferredFlutter) {
+        return $preferredFlutter
     }
 
-    $versionLine = Get-Content -LiteralPath $propertiesPath |
-        Where-Object { $_ -match '^flutter\.versionName=' } |
-        Select-Object -First 1
-
-    if (-not $versionLine) {
-        return '1.0.0'
+    if (Test-Path $linkedFlutter) {
+        return $linkedFlutter
     }
 
-    $versionName = ($versionLine -split '=', 2)[1].Trim()
-    if ([string]::IsNullOrWhiteSpace($versionName)) {
-        return '1.0.0'
+    $globalFlutter = Get-Command flutter -ErrorAction SilentlyContinue
+    if ($null -ne $globalFlutter) {
+        return $globalFlutter.Source
     }
 
-    return $versionName
+    throw 'Flutter was not found. FVM SDK is also missing.'
+}
+
+function Get-InnoCompiler {
+    $envCompiler = [Environment]::GetEnvironmentVariable('ISCC_PATH')
+    if (-not [string]::IsNullOrWhiteSpace($envCompiler) -and (Test-Path $envCompiler -PathType Leaf)) {
+        return (Resolve-Path $envCompiler).Path
+    }
+
+    $globalCompiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($null -ne $globalCompiler) {
+        return $globalCompiler.Source
+    }
+
+    $candidates = @(
+        'D:\Inno Setup 6\ISCC.exe',
+        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+        'C:\Program Files\Inno Setup 6\ISCC.exe',
+        'C:\Program Files (x86)\Inno Setup 5\ISCC.exe',
+        'C:\Program Files\Inno Setup 5\ISCC.exe'
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+
+    throw 'ISCC.exe was not found. Install Inno Setup or set ISCC_PATH.'
 }
 
 function Invoke-Flutter {
     param(
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]]$Args
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
     )
 
-    if ($script:UseFvm) {
-        & fvm flutter @Args
-    } else {
-        & flutter @Args
-    }
-
+    Write-Host ">> flutter $($Arguments -join ' ')" -ForegroundColor Cyan
+    & $script:flutterCommand @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw ("Flutter command failed: " + ($Args -join ' '))
+        throw "Flutter command failed: flutter $($Arguments -join ' ')"
     }
 }
 
-function Get-FirstExistingFile {
-    param([string[]]$Paths)
+function Invoke-InnoCompiler {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
 
-    foreach ($path in $Paths) {
-        if ($path -and (Test-Path -LiteralPath $path)) {
-            return (Get-Item -LiteralPath $path).FullName
+    Write-Host ">> iscc $($Arguments -join ' ')" -ForegroundColor Cyan
+    & $script:innoCompiler @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Inno Setup compile failed: ISCC.exe $($Arguments -join ' ')"
+    }
+}
+
+function Get-AppVersion {
+    $versionLine = Select-String -Path (Join-Path $projectRoot 'pubspec.yaml') -Pattern '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)(\+\d+)?\s*$' | Select-Object -First 1
+    if ($null -eq $versionLine) {
+        throw 'Failed to parse app version from pubspec.yaml.'
+    }
+
+    return $versionLine.Matches[0].Groups[1].Value
+}
+
+function Find-CoreBinary {
+    $candidatePaths = @(
+        (Join-Path $projectRoot 'windows\bin\windows\xray.exe'),
+        (Join-Path $projectRoot 'windows\bin\windows\v2ray.exe'),
+        (Join-Path $projectRoot '..\bin\windows\xray.exe'),
+        (Join-Path $projectRoot '..\bin\windows\v2ray.exe')
+    )
+
+    foreach ($envName in @('9.9_CORE_PATH', 'XRAY_EXE_PATH', 'V2RAY_EXE_PATH')) {
+        $envValue = [Environment]::GetEnvironmentVariable($envName)
+        if (-not [string]::IsNullOrWhiteSpace($envValue)) {
+            $candidatePaths += $envValue
+        }
+    }
+
+    foreach ($candidate in $candidatePaths) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+
+        if (Test-Path $candidate -PathType Leaf) {
+            return (Resolve-Path $candidate).Path
         }
     }
 
     return $null
 }
 
-function Get-AndroidApkPath {
-    param([string]$Flavor)
-
-    $apkDir = Join-Path $root 'build/app/outputs/flutter-apk'
-    $apk = Get-ChildItem -Path $apkDir -Filter "app*$Flavor*release.apk" -File -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if (-not $apk) {
-        $apk = Get-ChildItem -Path $apkDir -Filter 'app-release.apk' -File -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-    }
-    if (-not $apk) {
-        throw "APK not found for flavor '$Flavor' in $apkDir"
-    }
-
-    return $apk.FullName
-}
-
-function Get-WindowsReleaseDir {
-    $default = Join-Path $root 'build/windows/x64/runner/Release'
-    if (Test-Path -LiteralPath $default) {
-        return (Get-Item -LiteralPath $default).FullName
-    }
-
-    $candidate = Get-ChildItem -Path (Join-Path $root 'build/windows') -Recurse -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match 'runner[\\/]+Release$' } |
-        Select-Object -First 1
-
-    if (-not $candidate) {
-        throw 'Windows release directory not found.'
-    }
-
-    return $candidate.FullName
-}
-
-function Get-CoreBinaryPath {
-    $envKeys = @('9.9_CORE_PATH', 'XRAY_EXE_PATH', 'V2RAY_EXE_PATH')
-    $searchNames = @('xray.exe', 'v2ray.exe')
-    $searchRoots = @(
-        (Join-Path $root 'windows/bin/windows'),
-        (Join-Path $root 'bin/windows'),
-        (Join-Path $root 'windows'),
-        $root
+function Get-WindowsPackagingConfig {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('vpn', 'acc')]
+        [string]$Flavor
     )
 
-    foreach ($key in $envKeys) {
-        $value = [Environment]::GetEnvironmentVariable($key)
-        if ([string]::IsNullOrWhiteSpace($value)) {
+    switch ($Flavor) {
+        'vpn' {
+            return @{
+                AppName = '9.9 VPN'
+                AppGuid = '9F69C65B-6DF2-4895-88B7-46A1E9B8E4B1'
+            }
+        }
+        'acc' {
+            return @{
+                AppName = '9.9 Accelerator'
+                AppGuid = '0D5EE5D0-C8BE-4738-BE16-9A2B05F7547A'
+            }
+        }
+    }
+}
+
+function Build-AndroidArtifact {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('vpn', 'acc')]
+        [string]$Flavor,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DistDir
+    )
+
+    Invoke-Flutter -Arguments @('build', 'apk', '--release', '--flavor', $Flavor, "--dart-define=FLAVOR=$Flavor")
+
+    $sourceApk = Join-Path $projectRoot "build\app\outputs\flutter-apk\app-$Flavor-release.apk"
+    if (-not (Test-Path $sourceApk -PathType Leaf)) {
+        throw "APK artifact not found: $sourceApk"
+    }
+
+    $targetApk = Join-Path $DistDir "9.9$Flavor`_$Version.apk"
+    Copy-Item -Path $sourceApk -Destination $targetApk -Force
+}
+
+function Test-ValidZipFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path $Path -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+        $valid = $zip.Entries.Count -gt 0
+        $zip.Dispose()
+        return $valid
+    } catch {
+        return $false
+    }
+}
+
+function Get-RemoteContentLength {
+    param([Parameter(Mandatory = $true)][string]$Url)
+
+    $output = curl.exe -sI $Url | Out-String
+    if ($output -match 'Content-Length:\s*(\d+)') {
+        return [long]$Matches[1]
+    }
+    throw "Failed to read Content-Length for $Url"
+}
+
+function Download-EngineZip {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    $expectedLength = Get-RemoteContentLength -Url $Url
+
+    $dir = Split-Path $Destination -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+    for ($attempt = 1; $attempt -le 30; $attempt++) {
+        $resume = $false
+        if (Test-Path $Destination -PathType Leaf) {
+            $currentLength = (Get-Item $Destination).Length
+            if ($currentLength -ge $ExpectedLength -and (Test-ValidZipFile -Path $Destination)) {
+                return
+            }
+            if ($currentLength -gt 0 -and $currentLength -lt $ExpectedLength) {
+                $resume = $true
+            } else {
+                Remove-Item $Destination -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        Write-Host "  downloading $([IO.Path]::GetFileName($Destination)) attempt $attempt/30 ($ExpectedLength bytes)" -ForegroundColor DarkCyan
+        $curlArgs = @(
+            '-L', '--ssl-no-revoke', '--retry', '3', '--retry-delay', '2', '--connect-timeout', '30',
+            '-o', $Destination
+        )
+        if ($resume) {
+            $curlArgs += @('-C', '-')
+        }
+        $curlArgs += $Url
+        & curl.exe @curlArgs | Out-Null
+        Start-Sleep -Milliseconds 500
+
+        if ((Test-Path $Destination -PathType Leaf) -and (Test-ValidZipFile -Path $Destination)) {
+            $actualLength = (Get-Item $Destination).Length
+            if ($actualLength -ge $ExpectedLength) {
+                return
+            }
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    throw "Failed to download engine zip: $Url"
+}
+
+function Expand-EngineZip {
+    param(
+        [Parameter(Mandatory = $true)][string]$ZipPath,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    if (Test-Path $Destination) {
+        Remove-Item $Destination -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    Expand-Archive -Path $ZipPath -DestinationPath $Destination -Force
+
+    $nested = Join-Path $Destination 'windows-x64-flutter'
+    if (Test-Path $nested -PathType Container) {
+        Get-ChildItem $nested | Move-Item -Destination $Destination -Force
+        Remove-Item $nested -Recurse -Force
+    }
+
+    if (-not (Test-Path (Join-Path $Destination 'flutter_windows.dll') -PathType Leaf)) {
+        throw "Invalid engine artifact extracted to $Destination"
+    }
+}
+
+function Repair-WindowsEngineCache {
+    $flutterRoot = Split-Path (Split-Path $script:flutterCommand -Parent) -Parent
+    $cacheRoot = Join-Path $flutterRoot 'bin\cache'
+    $engineDir = Join-Path $cacheRoot 'artifacts\engine'
+    $engineVersion = (& $script:flutterCommand --version --machine | ConvertFrom-Json).engineRevision
+    $baseUrl = "https://storage.googleapis.com/flutter_infra_release/flutter/$engineVersion"
+    $workDir = Join-Path $cacheRoot '_engine_repair'
+    $artifacts = @(
+        @{ Name = 'windows-x64-debug'; Path = 'windows-x64-debug/windows-x64-flutter.zip' },
+        @{ Name = 'windows-x64-profile'; Path = 'windows-x64-profile/windows-x64-flutter.zip' },
+        @{ Name = 'windows-x64-release'; Path = 'windows-x64-release/windows-x64-flutter.zip' }
+    )
+
+    $missing = @()
+    foreach ($artifact in $artifacts) {
+        $dll = Join-Path $engineDir "$($artifact.Name)\flutter_windows.dll"
+        if (-not (Test-Path $dll -PathType Leaf)) {
+            $missing += $artifact.Name
+        }
+    }
+    if ($missing.Count -eq 0) {
+        Write-Host 'Windows engine cache is ready.' -ForegroundColor Green
+        return
+    }
+
+    Write-Host "Repairing Windows engine cache: $($missing -join ', ')" -ForegroundColor Yellow
+    Get-Process -Name 'dart','flutter' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $cacheRoot 'flutter.bat.lock') -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $cacheRoot 'lockfile') -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+
+    foreach ($artifact in $artifacts) {
+        $dll = Join-Path $engineDir "$($artifact.Name)\flutter_windows.dll"
+        if (Test-Path $dll -PathType Leaf) {
             continue
         }
 
-        if (Test-Path -LiteralPath $value -PathType Leaf) {
-            return (Get-Item -LiteralPath $value).FullName
-        }
-
-        if (Test-Path -LiteralPath $value -PathType Container) {
-            foreach ($name in $searchNames) {
-                $candidate = Join-Path $value $name
-                if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-                    return (Get-Item -LiteralPath $candidate).FullName
-                }
-            }
-        }
+        $zipPath = Join-Path $workDir ($artifact.Name + '.zip')
+        $destDir = Join-Path $engineDir $artifact.Name
+        Download-EngineZip -Url "$baseUrl/$($artifact.Path)" -Destination $zipPath
+        Expand-EngineZip -ZipPath $zipPath -Destination $destDir
+        Write-Host "  ready: $($artifact.Name)" -ForegroundColor Green
     }
 
-    foreach ($rootDir in $searchRoots) {
-        foreach ($name in $searchNames) {
-            $candidate = Join-Path $rootDir $name
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-                return (Get-Item -LiteralPath $candidate).FullName
-            }
-        }
-    }
-
-    throw 'Windows core not found. Set 9.9_CORE_PATH, XRAY_EXE_PATH, or V2RAY_EXE_PATH.'
+    Set-Content -Path (Join-Path $cacheRoot 'windows-sdk.stamp') -Value $engineVersion -NoNewline
+    $downloadRoot = Join-Path $cacheRoot "downloads\storage.googleapis.com\flutter_infra_release\flutter\$engineVersion"
+    Remove-Item $downloadRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-function Copy-CoreBinaryToRelease {
+function Build-WindowsArtifact {
     param(
-        [string]$SourcePath,
-        [string]$ReleaseDir
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('vpn', 'acc')]
+        [string]$Flavor,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DistDir,
+
+        [string]$CoreBinary
     )
 
-    $destPath = Join-Path $ReleaseDir 'xray.exe'
-    Copy-Item -LiteralPath $SourcePath -Destination $destPath -Force
-    return $destPath
+    Invoke-Flutter -Arguments @('build', 'windows', '--release', "--dart-define=FLAVOR=$Flavor")
+
+    $releaseDir = Join-Path $projectRoot 'build\windows\x64\runner\Release'
+    if (-not (Test-Path $releaseDir -PathType Container)) {
+        throw "Windows release directory not found: $releaseDir"
+    }
+
+    $stageDir = Join-Path $projectRoot "build\windows\package-$Flavor"
+    if (Test-Path $stageDir) {
+        Remove-Item -Path $stageDir -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Path $stageDir | Out-Null
+    Copy-Item -Path (Join-Path $releaseDir '*') -Destination $stageDir -Recurse -Force
+
+    $renamedExeName = "9.9$Flavor`_$Version.exe"
+    $sourceExe = Join-Path $stageDir '9.9.exe'
+    if (-not (Test-Path $sourceExe -PathType Leaf)) {
+        throw "Windows executable not found: $sourceExe"
+    }
+    Rename-Item -Path $sourceExe -NewName $renamedExeName
+
+    if (-not [string]::IsNullOrWhiteSpace($CoreBinary) -and (Test-Path $CoreBinary -PathType Leaf)) {
+        Copy-Item -Path $CoreBinary -Destination (Join-Path $stageDir (Split-Path $CoreBinary -Leaf)) -Force
+    } else {
+        Write-Warning 'xray.exe or v2ray.exe was not found. The Windows installer will not include the core binary.'
+    }
+
+    if (-not (Test-Path $installerScript -PathType Leaf)) {
+        throw "Installer script not found: $installerScript"
+    }
+
+    $packaging = Get-WindowsPackagingConfig -Flavor $Flavor
+    $iconFile = Join-Path $projectRoot 'windows\runner\resources\app_icon.ico'
+    $installerName = "9.9$Flavor`_$Version`_windows"
+
+    Invoke-InnoCompiler -Arguments @(
+        "/DAppGuid=$($packaging.AppGuid)",
+        "/DMyAppName=$($packaging.AppName)",
+        "/DMyAppVersion=$Version",
+        "/DMyAppPublisher=$appPublisher",
+        "/DMyAppURL=$appUrl",
+        "/DMyAppExeName=$renamedExeName",
+        "/DMyOutputDir=$DistDir",
+        "/DMyOutputBaseFilename=$installerName",
+        "/DMySourceDir=$stageDir",
+        "/DMyIconFile=$iconFile",
+        $installerScript
+    )
 }
 
-function New-SfxPackage {
-    param(
-        [string]$SourceDir,
-        [string]$OutputExe,
-        [string]$RunProgram
-    )
+$script:flutterCommand = Get-FlutterCommand
+$script:innoCompiler = Get-InnoCompiler
+$flutterVersionInfo = & $script:flutterCommand --version --machine | ConvertFrom-Json
+if ($flutterVersionInfo.frameworkVersion -ne $expectedFlutterVersion) {
+    throw "Expected Flutter $expectedFlutterVersion but found $($flutterVersionInfo.frameworkVersion)."
+}
 
-    $sevenZip = Get-FirstExistingFile @(
-        (Join-Path $env:ProgramFiles '7-Zip\7z.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} '7-Zip\7z.exe'),
-        ((Get-Command 7z.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source -First 1))
-    )
-    $sfx = Get-FirstExistingFile @(
-        (Join-Path $env:ProgramFiles '7-Zip\7z.sfx'),
-        (Join-Path ${env:ProgramFiles(x86)} '7-Zip\7z.sfx')
-    )
+$appVersion = Get-AppVersion
+$distDir = Join-Path $projectRoot 'dist'
+$coreBinary = Find-CoreBinary
 
-    if (-not $sevenZip -or -not $sfx) {
-        throw '7-Zip not found.'
+New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+switch ($Target) {
+    'all' {
+        Get-ChildItem -Path $distDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
     }
-
-    $tempDir = Join-Path $root 'build/package-tmp'
-    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-    $archive = Join-Path $tempDir 'payload.7z'
-    $config = Join-Path $tempDir 'config.txt'
-    Remove-Item -LiteralPath $archive, $config -Force -ErrorAction SilentlyContinue
-
-    Push-Location $SourceDir
-    try {
-        & $sevenZip a -t7z $archive '*' | Out-Null
-    } finally {
-        Pop-Location
+    'android' {
+        Get-ChildItem -Path $distDir -Filter '*.apk' -Force -ErrorAction SilentlyContinue | Remove-Item -Force
     }
-
-    @"
-;!@Install@!UTF-8!
-RunProgram="$RunProgram"
-GUIMode="2"
-;!@InstallEnd@!
-"@ | Set-Content -LiteralPath $config -Encoding UTF8
-
-    $outDir = Split-Path -Parent $OutputExe
-    New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-
-    $outStream = [System.IO.File]::Create($OutputExe)
-    try {
-        foreach ($path in @($sfx, $config, $archive)) {
-            $bytes = [System.IO.File]::ReadAllBytes($path)
-            $outStream.Write($bytes, 0, $bytes.Length)
-        }
-    } finally {
-        $outStream.Dispose()
+    'windows' {
+        Get-ChildItem -Path $distDir -Filter '*_windows.exe' -Force -ErrorAction SilentlyContinue | Remove-Item -Force
     }
 }
 
-$script:UseFvm = [bool](Get-Command fvm -ErrorAction SilentlyContinue)
+Invoke-Flutter -Arguments @('clean')
+Invoke-Flutter -Arguments @('pub', 'get')
 
-Write-Host 'Building APKs...'
-Invoke-Flutter build apk --release --flavor vpn --dart-define=FLAVOR=vpn
-$vpnApk = Get-AndroidApkPath -Flavor 'vpn'
+if ($Target -in @('all', 'android')) {
+    Build-AndroidArtifact -Flavor 'vpn' -Version $appVersion -DistDir $distDir
+    Build-AndroidArtifact -Flavor 'acc' -Version $appVersion -DistDir $distDir
+}
 
-Invoke-Flutter build apk --release --flavor acc --dart-define=FLAVOR=acc
-$accApk = Get-AndroidApkPath -Flavor 'acc'
+if ($Target -in @('all', 'windows')) {
+    Repair-WindowsEngineCache
+    Build-WindowsArtifact -Flavor 'vpn' -Version $appVersion -DistDir $distDir -CoreBinary $coreBinary
+    Build-WindowsArtifact -Flavor 'acc' -Version $appVersion -DistDir $distDir -CoreBinary $coreBinary
+}
 
-$distRoot = Join-Path $root 'dist'
-$androidOut = Join-Path $distRoot 'android'
-$versionName = Get-FlutterVersionName
-$vpnArtifactName = "9.9vpn_$versionName"
-$accArtifactName = "9.9acc_$versionName"
-New-Item -ItemType Directory -Path $androidOut -Force | Out-Null
-Copy-Item -LiteralPath $vpnApk -Destination (Join-Path $androidOut "$vpnArtifactName.apk") -Force
-Copy-Item -LiteralPath $accApk -Destination (Join-Path $androidOut "$accArtifactName.apk") -Force
-
-Write-Host 'Building Windows VPN package...'
-$corePath = Get-CoreBinaryPath
-$windowsOut = Join-Path $distRoot 'windows'
-New-Item -ItemType Directory -Path $windowsOut -Force | Out-Null
-$windowsRunnerName = '9.9.exe'
-
-$releaseName = '9.9'
-${env:9.9_WINDOWS_EXE_NAME} = $releaseName
-Invoke-Flutter build windows --release --dart-define=FLAVOR=vpn
-$releaseDir = Get-WindowsReleaseDir
-$stagingVpn = Join-Path $root 'build/package/windows-vpn'
-Remove-Item -LiteralPath $stagingVpn -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $stagingVpn -Force | Out-Null
-Copy-Item -Path (Join-Path $releaseDir '*') -Destination $stagingVpn -Recurse -Force
-Copy-CoreBinaryToRelease -SourcePath $corePath -ReleaseDir $stagingVpn | Out-Null
-New-SfxPackage -SourceDir $stagingVpn -OutputExe (Join-Path $windowsOut "$vpnArtifactName.exe") -RunProgram $windowsRunnerName
-
-$releaseName = '9.9'
-${env:9.9_WINDOWS_EXE_NAME} = $releaseName
-Invoke-Flutter build windows --release --dart-define=FLAVOR=acc
-$releaseDir = Get-WindowsReleaseDir
-$stagingAcc = Join-Path $root 'build/package/windows-acc'
-Remove-Item -LiteralPath $stagingAcc -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Path $stagingAcc -Force | Out-Null
-Copy-Item -Path (Join-Path $releaseDir '*') -Destination $stagingAcc -Recurse -Force
-Copy-CoreBinaryToRelease -SourcePath $corePath -ReleaseDir $stagingAcc | Out-Null
-New-SfxPackage -SourceDir $stagingAcc -OutputExe (Join-Path $windowsOut "$accArtifactName.exe") -RunProgram $windowsRunnerName
-
-Write-Host 'Done.'
-Write-Host "Android: $androidOut"
-Write-Host "Windows: $windowsOut"
+Write-Host ''
+Write-Host 'Build completed. Artifacts:' -ForegroundColor Green
+Get-ChildItem -Path $distDir | Select-Object Name, Length | Format-Table -AutoSize

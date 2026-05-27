@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -314,8 +315,9 @@ class VpnNativeChannel {
         _statusController.add('disconnected');
       };
       try {
-        final config = FlutterV2ray.parseFromURL(node.rawUri.trim())
+        final originalConfig = FlutterV2ray.parseFromURL(node.rawUri.trim())
             .getFullConfiguration();
+        final config = _injectDnsAndSniffing(originalConfig);
         final success =
             await WindowsVpnController.start(node, configJson: config);
         if (!success) {
@@ -340,10 +342,12 @@ class VpnNativeChannel {
         '[V2RAY] startVpn rawUri: ${rawUri.substring(0, rawUri.length.clamp(0, 80))}',
       );
       final parser = FlutterV2ray.parseFromURL(rawUri);
+      final originalConfig = parser.getFullConfiguration();
+      final optimizedConfig = _injectDnsAndSniffing(originalConfig);
       _statusController.add('connecting');
       await _v2ray!.startV2Ray(
         remark: node.name,
-        config: parser.getFullConfiguration(),
+        config: optimizedConfig,
         blockedApps: null,
         bypassSubnets: null,
         proxyOnly: false,
@@ -486,10 +490,65 @@ class VpnNativeChannel {
       _lastReportedBytes = 0;
       _currentTotalBytes = 0;
       _nativeTrafficBaselineBytes = null;
-      _lastNativeTotal = 0; // ✅ 重置原始值
+      _lastNativeTotal = 0;
       _stopAndroidHealthCheck();
-      _stopAndroidTrafficStats(); // ✅ 停止 TrafficStats
+      _stopAndroidTrafficStats();
       _statusController.add('disconnected');
+    }
+  }
+
+  /// 注入 DNS 和 sniffing 配置，加速连接后的首次网页访问
+  static String _injectDnsAndSniffing(String configJson) {
+    try {
+      final config = jsonDecode(configJson) as Map<String, dynamic>;
+
+      // 注入 DNS 配置：使用多组公共 DNS 并行查询
+      config['dns'] = {
+        'servers': [
+          {
+            'address': '8.8.8.8',
+            'port': 53,
+          },
+          {
+            'address': '1.1.1.1',
+            'port': 53,
+          },
+          'localhost',
+        ],
+        'queryStrategy': 'UseIPv4',
+      };
+
+      // 为所有 inbound 启用 sniffing（域名嗅探）
+      final inbounds = config['inbounds'];
+      if (inbounds is List) {
+        for (final inbound in inbounds) {
+          if (inbound is Map<String, dynamic>) {
+            inbound['sniffing'] = {
+              'enabled': true,
+              'destOverride': ['http', 'tls'],
+              'routeOnly': false,
+            };
+          }
+        }
+      }
+
+      // 确保 routing 中有基础规则，避免 DNS 查询被阻断
+      if (config['routing'] == null) {
+        config['routing'] = {
+          'domainStrategy': 'IPIfNonMatch',
+          'rules': <Map<String, dynamic>>[],
+        };
+      } else if (config['routing'] is Map<String, dynamic>) {
+        final routing = config['routing'] as Map<String, dynamic>;
+        routing['domainStrategy'] ??= 'IPIfNonMatch';
+      }
+
+      final result = jsonEncode(config);
+      print('[V2RAY] DNS & sniffing injected into config');
+      return result;
+    } catch (e) {
+      print('[V2RAY] failed to inject DNS/sniffing: $e, using original config');
+      return configJson;
     }
   }
 }

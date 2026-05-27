@@ -199,7 +199,7 @@ class WindowsVpnController {
       }
 
       _startStatsPolling();
-      _startProxyGuard(process.pid, configFile.path);
+      _startProxyGuard(pid, process.pid, configFile.path);
       return true;
     } catch (e) {
       print('WindowsVpnController Error: $e');
@@ -412,6 +412,37 @@ class WindowsVpnController {
         'socks=127.0.0.1:$_localSocksPort';
   }
 
+  static Future<bool> _runRequiredCommand(
+    String executable,
+    List<String> arguments,
+  ) async {
+    final result = await Process.run(executable, arguments);
+    if (result.exitCode == 0) return true;
+
+    print(
+      '[VPN PROXY] $executable ${arguments.join(' ')} failed: '
+      'exit=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}',
+    );
+    return false;
+  }
+
+  static Future<void> _runBestEffortCommand(
+    String executable,
+    List<String> arguments,
+  ) async {
+    try {
+      final result = await Process.run(executable, arguments);
+      if (result.exitCode != 0) {
+        print(
+          '[VPN PROXY] ignored $executable ${arguments.join(' ')} failure: '
+          'exit=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}',
+        );
+      }
+    } catch (e) {
+      print('[VPN PROXY] ignored $executable failure: $e');
+    }
+  }
+
   static Future<bool> _setSystemProxy(
       [bool enabled = false, String server = '']) async {
     if (!Platform.isWindows) return false;
@@ -421,7 +452,7 @@ class WindowsVpnController {
           'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
 
       if (enabled) {
-        await Process.run('reg', [
+        final enableOk = await _runRequiredCommand('reg', [
           'add',
           proxyKey,
           '/v',
@@ -432,7 +463,7 @@ class WindowsVpnController {
           '1',
           '/f',
         ]);
-        await Process.run('reg', [
+        final serverOk = await _runRequiredCommand('reg', [
           'add',
           proxyKey,
           '/v',
@@ -443,7 +474,7 @@ class WindowsVpnController {
           server,
           '/f',
         ]);
-        await Process.run('reg', [
+        final overrideOk = await _runRequiredCommand('reg', [
           'add',
           proxyKey,
           '/v',
@@ -454,22 +485,25 @@ class WindowsVpnController {
           '<local>;localhost;127.*',
           '/f',
         ]);
+        if (!enableOk || !serverOk || !overrideOk) {
+          return false;
+        }
       } else {
-        await Process.run('reg', [
+        await _runBestEffortCommand('reg', [
           'delete',
           proxyKey,
           '/v',
           'ProxyServer',
           '/f',
         ]);
-        await Process.run('reg', [
+        await _runBestEffortCommand('reg', [
           'delete',
           proxyKey,
           '/v',
           'ProxyOverride',
           '/f',
         ]);
-        await Process.run('reg', [
+        final disableOk = await _runRequiredCommand('reg', [
           'add',
           proxyKey,
           '/v',
@@ -480,9 +514,29 @@ class WindowsVpnController {
           '0',
           '/f',
         ]);
+        if (!disableOk) return false;
       }
 
-      await _refreshSystemProxy();
+      final refreshed = await _refreshSystemProxy();
+      if (!refreshed) return false;
+
+      final state = await _readSystemProxyState();
+      if (state == null) return false;
+      if (enabled) {
+        final proxyReady = state.enabled && state.server == server;
+        if (!proxyReady) {
+          print(
+            '[VPN PROXY] registry verification failed: '
+            'enabled=${state.enabled} server=${state.server}',
+          );
+        }
+        return proxyReady;
+      }
+
+      if (state.enabled) {
+        print('[VPN PROXY] registry disable verification failed');
+        return false;
+      }
       return true;
     } catch (e) {
       print('SetProxy Error: $e');
@@ -490,7 +544,7 @@ class WindowsVpnController {
     }
   }
 
-  static Future<void> _refreshSystemProxy() async {
+  static Future<bool> _refreshSystemProxy() async {
     const script = r'''
 Add-Type @"
 using System;
@@ -505,11 +559,63 @@ public static class WinInet {
   );
 }
 "@;
-[WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null;
-[WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null;
+$changed = [WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0);
+$settings = [WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0);
+if (-not ($changed -and $settings)) { exit 1 }
 ''';
 
-    await Process.run('powershell', ['-NoProfile', '-Command', script]);
+    final result = await Process.run(
+      'powershell',
+      ['-NoProfile', '-Command', script],
+    );
+    if (result.exitCode == 0) return true;
+
+    print(
+      '[VPN PROXY] refresh failed: '
+      'exit=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}',
+    );
+    return false;
+  }
+
+  static Future<_SystemProxyState?> _readSystemProxyState() async {
+    const script = r'''
+$ErrorActionPreference = 'Stop'
+$key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
+$item = Get-ItemProperty -Path $key
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[pscustomobject]@{
+  ProxyEnable = [int]($item.ProxyEnable)
+  ProxyServer = [string]($item.ProxyServer)
+  ProxyOverride = [string]($item.ProxyOverride)
+} | ConvertTo-Json -Compress
+''';
+
+    try {
+      final result = await Process.run(
+        'powershell',
+        ['-NoProfile', '-Command', script],
+      );
+      if (result.exitCode != 0) {
+        print(
+          '[VPN PROXY] read registry failed: '
+          'exit=${result.exitCode} stdout=${result.stdout} stderr=${result.stderr}',
+        );
+        return null;
+      }
+      final output = result.stdout.toString().trim();
+      if (output.isEmpty) return null;
+      final decoded = jsonDecode(output);
+      if (decoded is! Map) return null;
+      final map = Map<String, dynamic>.from(decoded.cast<String, dynamic>());
+      final enabled = int.tryParse(map['ProxyEnable']?.toString() ?? '') == 1;
+      return _SystemProxyState(
+        enabled: enabled,
+        server: map['ProxyServer']?.toString() ?? '',
+      );
+    } catch (e) {
+      print('[VPN PROXY] read registry error: $e');
+      return null;
+    }
   }
 
   static Future<_ProxyProbeResult> _probeProxyExit() async {
@@ -668,10 +774,11 @@ Get-CimInstance Win32_Process |
     } catch (_) {}
   }
 
-  static void _startProxyGuard(int appPid, String configPath) {
+  static void _startProxyGuard(int appPid, int corePid, String configPath) {
     final escapedPath = configPath.replaceAll("'", "''");
     final guardScript = '''
 \$appPid = $appPid;
+\$corePid = $corePid;
 \$configPath = '$escapedPath';
 Wait-Process -Id \$appPid -ErrorAction SilentlyContinue;
 reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings" /v ProxyEnable /t REG_DWORD /d 0 /f | Out-Null;
@@ -681,6 +788,7 @@ reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Setting
 Add-Type -TypeDefinition \$code;
 [WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null;
 [WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null;
+Stop-Process -Id \$corePid -Force -ErrorAction SilentlyContinue;
 Get-CimInstance Win32_Process |
   Where-Object {
     (\$_.Name -eq 'xray.exe' -or \$_.Name -eq 'v2ray.exe') -and
@@ -696,7 +804,7 @@ Get-CimInstance Win32_Process |
       ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', guardScript],
       runInShell: false,
     ).then((_) {
-      print('[VPN] Proxy Guard started for PID $appPid');
+      print('[VPN] Proxy Guard started for app PID $appPid');
     }).catchError((error) {
       print('[VPN] Failed to start Proxy Guard: $error');
     });
@@ -734,4 +842,14 @@ class _ProxyProbeResult {
 
   final bool success;
   final String? message;
+}
+
+class _SystemProxyState {
+  const _SystemProxyState({
+    required this.enabled,
+    required this.server,
+  });
+
+  final bool enabled;
+  final String server;
 }

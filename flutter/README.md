@@ -64,12 +64,15 @@ flutter run -d windows --dart-define=FLAVOR=vpn
 .\apk.bat
 ```
 
-运行后会输出 4 个包：
+运行前会先执行 `clean`，并强制校验 Flutter 版本为 `3.27.0`。
+Windows 安装器依赖 Inno Setup 的 `ISCC.exe`，可通过环境变量 `ISCC_PATH` 指定。
 
-- `dist/android/9d9-vpn.apk`
-- `dist/android/9d9-acc.apk`
-- `dist/windows/9d9-vpn.exe`
-- `dist/windows/9d9-acc.exe`
+运行后会把 4 个产物统一放到 `dist/` 根目录：
+
+- `dist/9.9vpn_<version>.apk`
+- `dist/9.9acc_<version>.apk`
+- `dist/9.9vpn_<version>_windows.exe`
+- `dist/9.9acc_<version>_windows.exe`
 
 Windows VPN 依赖 `xray.exe` 或 `v2ray.exe`。可以用任一方式提供：
 
@@ -79,7 +82,7 @@ Windows VPN 依赖 `xray.exe` 或 `v2ray.exe`。可以用任一方式提供：
 - 设置环境变量 `XRAY_EXE_PATH`
 - 设置环境变量 `V2RAY_EXE_PATH`
 
-Windows 打包时会把找到的 core 一起带进最终 exe 包，Android flavor 逻辑不受影响。
+Windows 打包时会把找到的 core 一起带进最终安装器 exe，Android flavor 逻辑不受影响。
 
 xray.exe 下载地址：https://github.com/XTLS/Xray-core/releases（下载 Xray-windows-64.zip 解压取 xray.exe）
 

@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/platform/vpn_native_channel.dart';
+import '../../flavor_config.dart';
 import 'auth_page.dart';
 import 'chatgpt_page.dart';
 import 'components/app_drawer.dart';
@@ -13,6 +16,7 @@ import 'components/notice_bar.dart';
 import 'components/quote_card.dart';
 import 'components/vpn_control_panel.dart';
 import 'contact_page.dart';
+import 'data/api_config.dart';
 import 'data/auth_service.dart';
 import 'data/contact_service.dart';
 import 'data/device_identity.dart';
@@ -37,6 +41,8 @@ class VpnHomePage extends StatefulWidget {
 }
 
 class _VpnHomePageState extends State<VpnHomePage> {
+  static const String _updateWebsiteUrl = 'https://jsq.wangwei.tech';
+
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final VpnNativeChannel _vpnChannel = const VpnNativeChannel();
   final RemoteVpnLineLoader _lineLoader = const RemoteVpnLineLoader();
@@ -69,6 +75,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
   Timer? _remainingTimer;
   StreamSubscription<String>? _statusSubscription;
   int _pendingTrafficBytes = 0; // 未成功上报的累计流量
+
+  bool _hasCheckedAppVersion = false;
+  bool _isUpdateDialogVisible = false;
+  bool _hasLoadedAppData = false;
+  bool _connectInFlight = false;
+  int _loadNodesGeneration = 0;
+  DateTime? _lastConnectTipAt;
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
@@ -204,6 +217,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (!mounted) return;
       setState(() {
         _appStatus = status;
+        _hasLoadedAppData = true;
       });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
@@ -223,10 +237,143 @@ class _VpnHomePageState extends State<VpnHomePage> {
       setState(() {
         _appConfig = config;
       });
+      unawaited(_checkAppVersion(config));
     } catch (_) {}
   }
 
   /// Token 过期：清空本地 session，断开 VPN，提示用户重新登录
+  Future<void> _checkAppVersion(Map<String, String> config) async {
+    if (!mounted || _hasCheckedAppVersion) return;
+
+    final latestVersion = config[_remoteVersionConfigKey]?.trim() ?? '';
+    if (latestVersion.isEmpty) return;
+
+    _hasCheckedAppVersion = true;
+    if (latestVersion == kAppVersion) return;
+
+    final downloadUrl = config[_downloadUrlConfigKey]?.trim() ?? '';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_showUpdateDialog(latestVersion, downloadUrl));
+    });
+  }
+
+  String get _remoteVersionConfigKey =>
+      FlavorConfig.isAcc ? 'app_acc_version' : 'app_vpn_version';
+
+  String get _downloadUrlConfigKey {
+    if (!kIsWeb && Platform.isWindows) {
+      return FlavorConfig.isAcc ? 'download_acc_exe' : 'download_vpn_exe';
+    }
+    return FlavorConfig.isAcc ? 'download_acc_apk' : 'download_vpn_apk';
+  }
+
+  Future<void> _showUpdateDialog(
+    String latestVersion,
+    String downloadUrl,
+  ) async {
+    if (!mounted || _isUpdateDialogVisible) return;
+    _isUpdateDialogVisible = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          title: const Text(
+            '发现新版本',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF881337),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${FlavorConfig.appName} 有可用更新，建议升级到最新版本。',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF9F1239),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                '当前版本：v$kAppVersion',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '最新版本：v$latestVersion',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFE11D48),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE11D48),
+              ),
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await _openUpdateLink(latestVersion);
+              },
+              child: const Text('去更新'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _isUpdateDialogVisible = false;
+    }
+  }
+
+  Future<void> _openUpdateLink(String latestVersion) async {
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        const channel = MethodChannel('9.9/native');
+        await channel.invokeMethod<void>(
+          'openExternalUrl',
+          <String, String>{'url': _updateWebsiteUrl},
+        );
+        return;
+      }
+
+      if (!kIsWeb && Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', _updateWebsiteUrl]);
+      } else if (!kIsWeb && Platform.isMacOS) {
+        await Process.run('open', [_updateWebsiteUrl]);
+      } else if (!kIsWeb && Platform.isLinux) {
+        await Process.run('xdg-open', [_updateWebsiteUrl]);
+      } else {
+        throw UnsupportedError('当前平台暂不支持自动打开官网');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('打开官网失败：$error。请手动访问 $_updateWebsiteUrl'),
+          backgroundColor: const Color(0xFFE11D48),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   Future<void> _handleTokenExpired({String? expectedToken}) async {
     final currentToken = _session?.token;
     print(
@@ -462,9 +609,13 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   Future<void> _loadNodes() async {
     if (!mounted) return;
+    final generation = ++_loadNodesGeneration;
     setState(() {
       _isLoadingNodes = true;
-      _message = null;
+      if (_message == '线路测速中，请稍候...' ||
+          _message == '请先加载并选择线路') {
+        _message = null;
+      }
     });
     try {
       final nodes = await _lineLoader.load();
@@ -473,15 +624,19 @@ class _VpnHomePageState extends State<VpnHomePage> {
       print('[LOAD_NODES] 开始测速 ${nodes.length} 个节点');
       final sortedNodes = await _speedTester.testAndSortNodes(nodes);
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadNodesGeneration) return;
       setState(() {
         _nodes = sortedNodes;
         _selectedNode = sortedNodes.isNotEmpty ? sortedNodes.first : null;
         _isLoadingNodes = false;
+        if (_message == '线路测速中，请稍候...' ||
+            _message == '请先加载并选择线路') {
+          _message = null;
+        }
       });
     } catch (error) {
       print('[LOAD_NODES] error: $error');
-      if (!mounted) return;
+      if (!mounted || generation != _loadNodesGeneration) return;
       setState(() {
         _isLoadingNodes = false;
         if (_nodes.isEmpty) {
@@ -557,80 +712,128 @@ class _VpnHomePageState extends State<VpnHomePage> {
     return true;
   }
 
-  Future<void> _connect() async {
-    var session = _session;
-    if (session == null) {
-      session = await Navigator.of(context).push<AuthSession>(
-        MaterialPageRoute<AuthSession>(
-          builder: (_) => AuthPage(config: _appConfig),
-        ),
-      );
-      if (session == null || !mounted) return;
-      setState(() {
-        _session = session;
-      });
-      _applySessionStatus(session);
-      await _loadAppData();
-    }
-
-    if (!_keepVpnConnected &&
-        (session.trialExpired || _appStatus.remainingSeconds <= 0) &&
-        !_hasActivePlan) {
-      setState(() {
-        _message = '试用已结束，请购买套餐后连接';
-      });
-      _openPurchasePage();
-      return;
-    }
-
-    final selectedNode = _selectedNode;
-    if (selectedNode == null) {
-      setState(() {
-        _message = '请先加载并选择线路';
-      });
-      return;
-    }
-
+  void _showConnectBlockedTip(String tip) {
+    if (!mounted) return;
     setState(() {
-      _status = VpnStatus.connecting;
-      _message = '正在请求 VPN 权限...';
+      _message = tip;
     });
 
+    final now = DateTime.now();
+    if (_lastConnectTipAt != null &&
+        now.difference(_lastConnectTipAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastConnectTipAt = now;
+
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(tip),
+        backgroundColor: const Color(0xFFE11D48),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _connect() async {
+    if (_connectInFlight || _isConnecting || _isConnected) {
+      return;
+    }
+    if (_isLoadingNodes) {
+      _showConnectBlockedTip('线路测速中，请稍候...');
+      return;
+    }
+
+    _connectInFlight = true;
     try {
-      await _flushCachedUsage(session.token).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () =>
-            print('[USAGE] pre-connect flush timeout, continue vpn'),
-      );
-      final prepareResult = await _vpnChannel.prepareVpn();
-      if (prepareResult != null) {
+      var session = _session;
+      if (session == null) {
+        session = await Navigator.of(context).push<AuthSession>(
+          MaterialPageRoute<AuthSession>(
+            builder: (_) => AuthPage(config: _appConfig),
+          ),
+        );
+        if (session == null || !mounted) return;
         setState(() {
-          _status = VpnStatus.disconnected;
-          _message = prepareResult;
+          _session = session;
         });
+        _applySessionStatus(session);
+        await _loadAppData();
+      }
+
+      if (!mounted) return;
+
+      if (!_keepVpnConnected &&
+          (session.trialExpired || _appStatus.remainingSeconds <= 0) &&
+          !_hasActivePlan) {
+        setState(() {
+          _message = '试用已结束，请购买套餐后连接';
+        });
+        _openPurchasePage();
+        return;
+      }
+
+      if (_isLoadingNodes) {
+        _showConnectBlockedTip('线路测速中，请稍候...');
+        return;
+      }
+
+      final selectedNode = _selectedNode;
+      if (selectedNode == null) {
+        _showConnectBlockedTip('请先加载并选择线路');
         return;
       }
 
       setState(() {
-        _message = '正在连接 ${selectedNode.name}...';
+        _status = VpnStatus.connecting;
+        _message = '正在请求 VPN 权限...';
       });
 
-      final result = await _vpnChannel.startVpn(selectedNode);
-      if (result != null) {
+      try {
+        await _flushCachedUsage(session.token).timeout(
+          const Duration(seconds: 3),
+          onTimeout: () =>
+              print('[USAGE] pre-connect flush timeout, continue vpn'),
+        );
+        final prepareResult = await _vpnChannel.prepareVpn();
+        if (prepareResult != null) {
+          if (!mounted) return;
+          setState(() {
+            _status = VpnStatus.disconnected;
+            _message = prepareResult;
+          });
+          return;
+        }
+
+        if (!mounted) return;
         setState(() {
-          _message = result;
+          _message = '正在连接 ${selectedNode.name}...';
+        });
+
+        final result = await _vpnChannel.startVpn(selectedNode);
+        if (!mounted) return;
+        if (result != null) {
+          setState(() {
+            _status = VpnStatus.disconnected;
+            _message = result;
+          });
+        }
+      } on PlatformException catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _status = VpnStatus.disconnected;
+          _message = error.message ?? 'VPN start failed';
+        });
+      } on MissingPluginException {
+        if (!mounted) return;
+        setState(() {
+          _status = VpnStatus.disconnected;
+          _message = '原生 VPN 通道未加载，请停止应用后重新运行安装';
         });
       }
-    } on PlatformException catch (error) {
-      setState(() {
-        _status = VpnStatus.disconnected;
-        _message = error.message ?? 'VPN start failed';
-      });
-    } on MissingPluginException {
-      setState(() {
-        _status = VpnStatus.disconnected;
-        _message = '原生 VPN 通道未加载，请停止应用后重新运行安装';
-      });
+    } finally {
+      _connectInFlight = false;
     }
   }
 
@@ -840,6 +1043,18 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   void _openNodePicker() {
+    if (_isConnected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先断开连接再切换线路'),
+          backgroundColor: Color(0xFFE11D48),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     if (_nodes.isEmpty || _selectedNode == null) {
       setState(() {
         _message = '暂无可选线路';
@@ -1044,7 +1259,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
                     remainingTimeText: _appStatus.remainingTimeText,
                     trafficRemaining: _displayTrafficRemaining,
                     isLoadingNodes: _isLoadingNodes,
-                    isBusy: _isConnecting,
+                    isBusy: _isConnecting || _isLoadingNodes,
                     hasNodes: _nodes.isNotEmpty,
                     onReloadNodes: _loadNodes,
                     onPowerPressed: _isConnected ? _disconnect : _connect,
@@ -1052,7 +1267,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
                   ),
                 ),
               ),
-              if (_session != null &&
+              if (_hasLoadedAppData &&
+                  _session != null &&
                   _appStatus.remainingSeconds <= 0 &&
                   !_hasActivePlan)
                 Padding(
