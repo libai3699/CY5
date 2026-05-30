@@ -41,9 +41,10 @@ class RemoteVpnLineLoader {
         debugPrint('[VPN_LINE] after filter: ${filtered.length}');
 
         if (filtered.isEmpty) {
-          debugPrint('[VPN_LINE] filter result empty');
-          await _saveCacheList(const []);
-          return const [];
+          // 拉取成功但没有解析到可用节点：不要清空已有缓存，回退到本地缓存，
+          // 避免一次异常的订阅内容把之前能用的线路覆盖掉。
+          debugPrint('[VPN_LINE] filter result empty, keep cache & fallback');
+          return _loadFromCacheOrEmpty();
         }
 
         final normalized = _normalizeNodeIds(_compactNodes(filtered));
@@ -57,16 +58,24 @@ class RemoteVpnLineLoader {
       return [node];
     } catch (e) {
       debugPrint('[VPN_LINE] load error: $e');
-      final cached = await _readCacheList();
-      if (cached != null && cached.isNotEmpty) {
-        final filteredCached = _normalizeNodeIds(
-          _compactNodes(cached.where((n) => _hasKnownRegion(n.name)).toList()),
-        );
-        debugPrint('[VPN_LINE] using filtered cached ${filteredCached.length} nodes');
-        return filteredCached;
-      }
+      final fallback = await _loadFromCacheOrEmpty();
+      if (fallback.isNotEmpty) return fallback;
       rethrow;
     }
+  }
+
+  /// 回退到本地缓存：有可用缓存则返回过滤后的缓存，否则返回空列表。
+  /// 注意：这里不会写入缓存，保证原有缓存不被覆盖。
+  Future<List<VpnNode>> _loadFromCacheOrEmpty() async {
+    final cached = await _readCacheList();
+    if (cached != null && cached.isNotEmpty) {
+      final filteredCached = _normalizeNodeIds(
+        _compactNodes(cached.where((n) => _hasKnownRegion(n.name)).toList()),
+      );
+      debugPrint('[VPN_LINE] using filtered cached ${filteredCached.length} nodes');
+      return filteredCached;
+    }
+    return const [];
   }
 
   /// 判断节点名称是否包含可识别的地区关键词
