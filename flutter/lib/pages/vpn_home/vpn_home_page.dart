@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -82,6 +83,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   bool _connectInFlight = false;
   int _loadNodesGeneration = 0;
   DateTime? _lastConnectTipAt;
+  DateTime? _connectedAt;
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
@@ -120,7 +122,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     unawaited(_loadAppData());
     unawaited(_loadNodes());
     unawaited(_registerDevice());
-    // 后台预加载联系方式，写入缓存，ContactPage 打开时直接读缓存
     unawaited(ContactService.instance.prefetch());
   }
 
@@ -171,6 +172,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
             break;
           case 'connected':
             if (_status != VpnStatus.connected) {
+              _connectedAt = DateTime.now();
               setState(() {
                 _status = VpnStatus.connected;
                 _message = '${_selectedNode?.name ?? "VPN"} 已连接';
@@ -180,14 +182,18 @@ class _VpnHomePageState extends State<VpnHomePage> {
             }
             break;
           case 'disconnected':
+            final wasConnected = _status == VpnStatus.connected;
+            _connectedAt = null;
             setState(() {
               _status = VpnStatus.disconnected;
               _message = null;
             });
-            _heartbeatTimer?.cancel();
-            _uiRefreshTimer?.cancel();
-            _localUsageTimer?.cancel();
-            unawaited(_collectAndFlushUsage());
+            if (wasConnected) {
+              _heartbeatTimer?.cancel();
+              _uiRefreshTimer?.cancel();
+              _localUsageTimer?.cancel();
+              unawaited(_collectAndFlushUsage());
+            }
             break;
         }
       },
@@ -209,7 +215,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   Future<void> _loadAppData() async {
     final token = _session?.token;
-    print('[AUTH] _loadAppData start token=${_maskToken(token)}');
     try {
       final status = token == null || token.isEmpty
           ? await _appLoader.loadStatus()
@@ -221,11 +226,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
       });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
-    } on TokenExpiredException catch (e) {
-      print(
-          '[AUTH] _loadAppData token expired token=${_maskToken(token)} error=$e');
+    } on TokenExpiredException {
       if (_isConnected) {
-        print('[AUTH] token expired ignored while vpn is connected');
         return;
       }
       await _handleTokenExpired(expectedToken: token);
@@ -376,13 +378,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   Future<void> _handleTokenExpired({String? expectedToken}) async {
     final currentToken = _session?.token;
-    print(
-      '[AUTH] _handleTokenExpired expected=${_maskToken(expectedToken)} current=${_maskToken(currentToken)}',
-    );
     if (expectedToken != null &&
         expectedToken.isNotEmpty &&
         currentToken != expectedToken) {
-      print('[AUTH] token expired ignored, session already switched');
       return;
     }
 
@@ -390,23 +388,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
       try {
         final persistedSession = await _authService.loadSession();
         final persistedToken = persistedSession?.token;
-        print(
-          '[AUTH] persisted session token=${_maskToken(persistedToken)} expected=${_maskToken(expectedToken)}',
-        );
         if (persistedToken != null &&
             persistedToken.isNotEmpty &&
             persistedToken != expectedToken) {
-          print(
-              '[AUTH] token expired ignored, persisted session already switched');
           return;
         }
-      } catch (e) {
-        print('[AUTH] token expired persisted session check failed: $e');
-      }
+      } catch (_) {}
     }
 
     if (_isConnected) {
-      print('[AUTH] token expired but vpn is connected, keep session and vpn');
       if (mounted) {
         setState(() {
           _message = '登录状态异常，当前连接保持中';
@@ -415,7 +405,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
       return;
     }
 
-    print('[AUTH] token expired, clearing session');
     await _authService.clearSession();
     if (!mounted) return;
     setState(() {
@@ -488,7 +477,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     _uiRefreshTimer?.cancel();
     _localUsageTimer?.cancel();
     _pendingTrafficBytes = 0;
-    print('[HEARTBEAT] starting heartbeat timer');
     unawaited(VpnNativeChannel.resetTrafficBaseline());
 
     // 每30秒采集本地流量增量
@@ -516,7 +504,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (token == null || token.isEmpty) return;
 
     try {
-      print('[HEARTBEAT] sending heartbeat...');
       // ✅ 只调用一次 collectHeartbeatTraffic，避免重复统计
       // 不再调用 _collectLocalUsage()，因为 collectHeartbeatTraffic 内部会调用 pollTrafficDelta
       await _usageReporter.collectHeartbeatTraffic(); // 收集流量但保持会话活跃
@@ -539,16 +526,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
           setState(() {
             _appStatus = status;
           });
-          print('[HEARTBEAT] status refreshed, traffic_remaining=${status.trafficRemaining}');
         }
-      } catch (e) {
-        print('[HEARTBEAT] status refresh failed: $e');
-      }
-      
-      print('[HEARTBEAT] heartbeat sent successfully, all counters reset');
-    } catch (e) {
-      print('[HEARTBEAT] send failed: $e');
-    }
+      } catch (_) {}
+    } catch (_) {}
   }
 
   Future<void> _collectLocalUsage() async {
@@ -560,7 +540,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     setState(() {
       _pendingTrafficBytes += delta;
     });
-    print('[USAGE] local +$delta bytes, pending=$_pendingTrafficBytes');
   }
 
   Future<void> _flushCachedUsage(String? token) async {
@@ -568,7 +547,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     await _usageReporter.flush(token);
     // ✅ 上报后重置VPN底层的流量基线
     await VpnNativeChannel.resetTrafficBaseline();
-    print('[USAGE] cached usage flushed and baseline reset');
   }
 
   Future<void> _collectAndFlushUsage() async {
@@ -576,7 +554,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
     await _usageReporter.collectCurrentSession();
     await _usageReporter.flush(_session?.token).timeout(
           const Duration(seconds: 3),
-          onTimeout: () => print('[USAGE] disconnect flush timeout, keep flow'),
+          onTimeout: () {},
         );
     // ✅ 断开后重置所有计数器
     await VpnNativeChannel.resetTrafficBaseline();
@@ -585,7 +563,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
         _pendingTrafficBytes = 0;
       });
     }
-    print('[USAGE] disconnect flush completed, all counters reset');
   }
 
   void _applySessionStatus(AuthSession session) {
@@ -619,12 +596,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
     });
     try {
       final nodes = await _lineLoader.load();
-
-      // 测速并排序
-      print('[LOAD_NODES] 开始测速 ${nodes.length} 个节点');
       final sortedNodes = await _speedTester.testAndSortNodes(nodes);
 
-      if (!mounted || generation != _loadNodesGeneration) return;
+      if (!mounted || generation != _loadNodesGeneration) {
+        return;
+      }
       setState(() {
         _nodes = sortedNodes;
         _selectedNode = sortedNodes.isNotEmpty ? sortedNodes.first : null;
@@ -634,8 +610,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
           _message = null;
         }
       });
-    } catch (error) {
-      print('[LOAD_NODES] error: $error');
+    } catch (_) {
       if (!mounted || generation != _loadNodesGeneration) return;
       setState(() {
         _isLoadingNodes = false;
@@ -653,9 +628,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
     setState(() => _quoteKey++);
     try {
       await _loadAppData().timeout(const Duration(seconds: 3));
-    } catch (error) {
-      print('[REFRESH_HOME] status refresh skipped: $error');
-    }
+    } catch (_) {}
   }
 
   Future<void> _refreshLinesFromDrawer() async {
@@ -754,7 +727,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
             builder: (_) => AuthPage(config: _appConfig),
           ),
         );
-        if (session == null || !mounted) return;
+        if (session == null || !mounted) {
+          return;
+        }
         setState(() {
           _session = session;
         });
@@ -793,8 +768,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       try {
         await _flushCachedUsage(session.token).timeout(
           const Duration(seconds: 3),
-          onTimeout: () =>
-              print('[USAGE] pre-connect flush timeout, continue vpn'),
+          onTimeout: () {},
         );
         final prepareResult = await _vpnChannel.prepareVpn();
         if (prepareResult != null) {
@@ -838,24 +812,27 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   Future<void> _disconnect() async {
+    final connectedAt = _connectedAt;
+    if (connectedAt != null &&
+        DateTime.now().difference(connectedAt) < const Duration(seconds: 2)) {
+      return;
+    }
+
     _heartbeatTimer?.cancel();
     _localUsageTimer?.cancel();
     await _collectLocalUsage();
     await _usageReporter.collectCurrentSession();
     setState(() {
-      _status = VpnStatus.connecting;
       _message = '正在断开...';
     });
 
     try {
       await _vpnChannel.stopVpn();
-    } catch (error) {
-      print('[DISCONNECT] error: $error');
+    } catch (_) {
     } finally {
       await _usageReporter.flush(_session?.token).timeout(
             const Duration(seconds: 3),
-            onTimeout: () =>
-                print('[USAGE] disconnect flush timeout, continue'),
+            onTimeout: () {},
           );
       // 无论如何都强制设置为断开状态
       if (mounted) {
@@ -899,20 +876,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
         builder: (_) => AuthPage(config: _appConfig),
       ),
     );
-    print(
-        '[AUTH] _openAuthPage returned session=${_maskToken(session?.token)}');
     if (session == null || !mounted) return;
     setState(() {
       _session = session;
     });
     _applySessionStatus(session);
     await _loadAppData();
-  }
-
-  String _maskToken(String? token) {
-    if (token == null || token.isEmpty) return '<none>';
-    if (token.length <= 12) return token;
-    return '${token.substring(0, 6)}...${token.substring(token.length - 6)}';
   }
 
   Future<void> _logoutCurrentDevice() async {
@@ -922,8 +891,6 @@ class _VpnHomePageState extends State<VpnHomePage> {
     // 先断开 VPN
     if (!_keepVpnConnected && (_isConnected || _isConnecting)) {
       await _disconnect();
-    } else if (_isConnected || _isConnecting) {
-      print('[AUTH] logout requested while vpn is connected, keep vpn running');
     }
 
     // 取消定时器
@@ -1259,6 +1226,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
                     remainingTimeText: _appStatus.remainingTimeText,
                     trafficRemaining: _displayTrafficRemaining,
                     isLoadingNodes: _isLoadingNodes,
+                    isLoadingStatus: !_hasLoadedAppData,
                     isBusy: _isConnecting || _isLoadingNodes,
                     hasNodes: _nodes.isNotEmpty,
                     onReloadNodes: _loadNodes,

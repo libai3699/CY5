@@ -52,7 +52,6 @@ class UsageReporter {
     ));
   }
 
-  /// 收集心跳周期内的流量，但保持会话活跃状态（不设置 activeStartedAtMillis 为 null）
   Future<void> collectHeartbeatTraffic() async {
     final state = await _readState();
     final startedAt = state.activeStartedAtMillis;
@@ -62,16 +61,12 @@ class UsageReporter {
     final elapsedSeconds =
         startedAt == null ? 0 : ((now - startedAt) / 1000).floor();
 
-    // ✅ 累积流量和时长到待上报队列
-    // ✅ 重置会话开始时间为当前时间，继续计时（避免重复计算时长）
     await _writeState(state.copyWith(
-      activeStartedAtMillis: now,  // 重置为当前时间
+      activeStartedAtMillis: now,
       pendingSeconds:
           state.pendingSeconds + elapsedSeconds.clamp(0, 86400).toInt(),
       pendingTrafficBytes: state.pendingTrafficBytes + trafficDelta,
     ));
-    
-    print('[USAGE] collected heartbeat traffic: delta=$trafficDelta bytes, elapsed=$elapsedSeconds seconds');
   }
 
   Future<void> addPendingTraffic(int trafficBytes) async {
@@ -89,28 +84,21 @@ class UsageReporter {
     if (state.pendingSeconds <= 0 && state.pendingTrafficBytes <= 0) return;
 
     final seconds = state.pendingSeconds.clamp(0, 86400).toInt();
-    
-    // 限制单次上报最多100MB，防止异常数据导致大量流量被扣除
-    const maxFlushTrafficBytes = 100 * 1024 * 1024; // 100MB
+
+    const maxFlushTrafficBytes = 100 * 1024 * 1024;
     var bytes = state.pendingTrafficBytes
         .clamp(0, _maxPersistedPendingTrafficBytes)
         .toInt();
-    
+
     if (bytes > maxFlushTrafficBytes) {
-      print(
-        '[USAGE] WARNING: pending traffic too large: ${(bytes / 1024 / 1024).toStringAsFixed(2)} MB, '
-        'clamping to ${(maxFlushTrafficBytes / 1024 / 1024).toStringAsFixed(2)} MB',
-      );
       bytes = maxFlushTrafficBytes;
     }
-    
-    print('[USAGE] flushing: seconds=$seconds, bytes=$bytes (${(bytes / 1024 / 1024).toStringAsFixed(2)} MB)');
-    
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10); // ✅ 增加超时时间
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final request = await client
           .postUrl(Uri.parse(kUserHeartbeatApiUrl))
-          .timeout(const Duration(seconds: 10)); // ✅ 增加超时时间
+          .timeout(const Duration(seconds: 10));
       request.headers.contentType = ContentType.json;
       request.headers.set('Authorization', 'Bearer $token');
       request.write(jsonEncode({
@@ -118,30 +106,24 @@ class UsageReporter {
         'traffic_bytes': bytes,
       }));
       final response =
-          await request.close().timeout(const Duration(seconds: 10)); // ✅ 增加超时时间
+          await request.close().timeout(const Duration(seconds: 10));
       final body = await response
           .transform(utf8.decoder)
           .join()
-          .timeout(const Duration(seconds: 10)); // ✅ 增加超时时间
+          .timeout(const Duration(seconds: 10));
       final ok = response.statusCode >= 200 &&
           response.statusCode < 300 &&
           _isSuccessBody(body);
       if (!ok) {
-        print(
-            '[USAGE] flush rejected status=${response.statusCode} body=$body');
         return;
       }
 
-      // ✅ 上报成功后，完全清空缓存，避免重复统计
-      // 不再使用减法，而是直接清零
       await _writeState(const _UsageState(
         activeStartedAtMillis: null,
         pendingSeconds: 0,
         pendingTrafficBytes: 0,
       ));
-      print('[USAGE] flush ok and cache cleared: seconds=$seconds bytes=$bytes (${(bytes / 1024 / 1024).toStringAsFixed(2)} MB)');
-    } catch (e) {
-      print('[USAGE] flush skipped: $e');
+    } catch (_) {
     } finally {
       client.close(force: true);
     }
@@ -160,7 +142,6 @@ class UsageReporter {
   int _safeTrafficDelta(int bytes) {
     if (bytes <= 0) return 0;
     if (bytes > _maxTrafficDeltaBytes) {
-      print('[USAGE] ignored suspicious local traffic delta=$bytes bytes');
       return 0;
     }
     return bytes;
@@ -168,9 +149,6 @@ class UsageReporter {
 
   _UsageState _sanitizeState(_UsageState state) {
     if (state.pendingTrafficBytes > _maxPersistedPendingTrafficBytes) {
-      print(
-        '[USAGE] dropped suspicious cached traffic=${state.pendingTrafficBytes} bytes',
-      );
       return state.copyWith(pendingTrafficBytes: 0);
     }
     return state;

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../data/api_config.dart';
+import 'skeleton_box.dart';
 
 class NoticeBar extends StatefulWidget {
   const NoticeBar({super.key, this.token, this.onStatusUpdate});
@@ -20,6 +21,7 @@ class _NoticeBarState extends State<NoticeBar> {
   List<String> _notices = [];
   int _current = 0;
   Timer? _timer;
+  bool _loading = true;
 
   @override
   void initState() {
@@ -80,11 +82,13 @@ class _NoticeBarState extends State<NoticeBar> {
     } catch (_) {
     } finally {
       client.close(force: true);
+      if (mounted && _loading) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading && _notices.isEmpty) return _buildSkeleton();
     if (_notices.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -134,6 +138,28 @@ class _NoticeBarState extends State<NoticeBar> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.82),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withOpacity(0.9)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.campaign_rounded, color: Color(0xFFE11D48), size: 18),
+          SizedBox(width: 10),
+          Expanded(
+            child: SkeletonBox(
+                width: double.infinity, height: 13, borderRadius: 6),
           ),
         ],
       ),

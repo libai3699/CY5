@@ -17,11 +17,11 @@ class NodeLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final parsed = parseNodeName(node.name);
+    final parsed = parseNodeName(node.name, hintRegion: node.region);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(parsed.flag, style: TextStyle(fontSize: fontSize + 2)),
+        _buildFlag(parsed.flag),
         const SizedBox(width: 6),
         Text(
           parsed.region,
@@ -76,6 +76,49 @@ class NodeLabel extends StatelessWidget {
     if (latency < 200) return const Color(0xFFF59E0B); // 橙色 - 中等
     return const Color(0xFFEF4444); // 红色 - 慢
   }
+
+  /// 渲染线路标识：统一用「国家代码徽章」或地球图标，不依赖 emoji 字体。
+  /// 很多 Android 机型（华为/小米/OPPO 等）系统字体不含国旗 emoji，会显示空白。
+  Widget _buildFlag(String flag) {
+    final code = flagToCountryCode(flag);
+    if (code != null) {
+      return Container(
+        constraints: BoxConstraints(minWidth: fontSize + 10, minHeight: fontSize + 6),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE11D48),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          code,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            height: 1.0,
+          ),
+        ),
+      );
+    }
+    return Icon(
+      Icons.public_rounded,
+      size: fontSize + 6,
+      color: const Color(0xFFE11D48),
+    );
+  }
+}
+
+/// 把国旗 emoji（两个区域指示符，如 🇭🇰）还原成 ISO 国家代码（如 HK）。
+/// 非国旗（如 🌐）返回 null。
+String? flagToCountryCode(String flag) {
+  final runes = flag.runes.toList();
+  if (runes.length != 2) return null;
+  bool isRi(int r) => r >= 0x1F1E6 && r <= 0x1F1FF;
+  if (!isRi(runes[0]) || !isRi(runes[1])) return null;
+  final a = String.fromCharCode(runes[0] - 0x1F1E6 + 0x41);
+  final b = String.fromCharCode(runes[1] - 0x1F1E6 + 0x41);
+  return '$a$b';
 }
 
 class ParsedNode {
@@ -85,7 +128,7 @@ class ParsedNode {
   final String number;
 }
 
-ParsedNode parseNodeName(String rawName) {
+ParsedNode parseNodeName(String rawName, {String? hintRegion}) {
   String name = rawName;
 
   // Step 1: 截断 |
@@ -123,6 +166,12 @@ ParsedNode parseNodeName(String rawName) {
     rest = name.substring(flagMatch.end).trim();
   } else {
     flag = inferFlag(name);
+    if (flag == '🌐' && hintRegion != null) {
+      final hint = hintRegion.trim();
+      if (hint.isNotEmpty && hint.toLowerCase() != 'auto') {
+        flag = inferFlag(hint);
+      }
+    }
   }
 
   // Step 5: 从末尾提取数字编号
@@ -184,4 +233,22 @@ String inferFlag(String name) {
     }
   }
   return '🌐';
+}
+
+/// 判断节点名称（或 region 字段）是否包含可识别的地区信息。
+bool hasRecognizableRegion(String name, {String? hintRegion}) {
+  final trimmed = name.trim();
+  if (RegExp(r'^[\u{1F1E6}-\u{1F1FF}]{2}', unicode: true).hasMatch(trimmed)) {
+    return true;
+  }
+  if (inferFlag(trimmed) != '🌐') return true;
+  if (hintRegion != null) {
+    final hint = hintRegion.trim();
+    if (hint.isNotEmpty &&
+        hint.toLowerCase() != 'auto' &&
+        inferFlag(hint) != '🌐') {
+      return true;
+    }
+  }
+  return false;
 }

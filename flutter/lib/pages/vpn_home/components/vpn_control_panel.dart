@@ -4,6 +4,7 @@ import '../models/vpn_node.dart';
 import '../models/vpn_status.dart';
 import 'node_selector.dart';
 import 'power_button.dart';
+import 'skeleton_box.dart';
 
 class VpnControlPanel extends StatelessWidget {
   const VpnControlPanel({
@@ -11,6 +12,7 @@ class VpnControlPanel extends StatelessWidget {
     required this.hasNodes,
     required this.isBusy,
     required this.isLoadingNodes,
+    required this.isLoadingStatus,
     required this.message,
     required this.node,
     required this.onNodePressed,
@@ -24,6 +26,7 @@ class VpnControlPanel extends StatelessWidget {
   final bool hasNodes;
   final bool isBusy;
   final bool isLoadingNodes;
+  final bool isLoadingStatus;
   final String? message;
   final VpnNode? node;
   final VoidCallback onNodePressed;
@@ -85,18 +88,20 @@ class VpnControlPanel extends StatelessWidget {
                   icon: Icons.wifi_rounded,
                   label: '流量',
                   value: trafficRemaining,
+                  loading: isLoadingStatus,
                 ),
                 const SizedBox(height: 10),
                 _InfoChip(
                   icon: Icons.timer_outlined,
                   label: '时长',
                   value: remainingTimeText,
+                  loading: isLoadingStatus,
                 ),
               ],
             ),
             const SizedBox(height: 10),
             if (isLoadingNodes)
-              const CircularProgressIndicator(color: Color(0xFFE11D48))
+              const _NodeSelectorSkeleton()
             else if (node != null)
               NodeSelector(
                 node: node!,
@@ -135,11 +140,13 @@ class _InfoChip extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.loading = false,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -160,9 +167,47 @@ class _InfoChip extends StatelessWidget {
             style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12, fontWeight: FontWeight.w700),
           ),
           const SizedBox(width: 28),
-          Text(
-            value,
-            style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w800),
+          if (loading)
+            const SkeletonBox(width: 76, height: 15, borderRadius: 6)
+          else
+            Text(
+              value,
+              style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 测速/线路加载中的占位骨架，外形与 [NodeSelector] 保持一致。
+class _NodeSelectorSkeleton extends StatelessWidget {
+  const _NodeSelectorSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.72),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFE11D48).withOpacity(0.18),
+        ),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SkeletonBox(width: 22, height: 18, borderRadius: 4),
+          SizedBox(width: 8),
+          SkeletonBox(width: 64, height: 16, borderRadius: 6),
+          SizedBox(width: 8),
+          SkeletonBox(width: 44, height: 16, borderRadius: 6),
+          SizedBox(width: 8),
+          Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: Color(0x59881337),
+            size: 20,
           ),
         ],
       ),

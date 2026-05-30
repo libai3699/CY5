@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart';
 
 import 'api_config.dart';
 import 'vpn_subscription_loader.dart';
+import '../components/node_label.dart';
 import '../models/vpn_node.dart';
 
 class RemoteVpnLineLoader {
@@ -17,9 +17,7 @@ class RemoteVpnLineLoader {
   Future<List<VpnNode>> load() async {
     try {
       final node = await _fetchRemoteLine();
-      debugPrint('[VPN_LINE] fetched: ${jsonEncode(node.toJson())}');
 
-      // 当 protocol=SUBSCRIPTION 但 rawUri 为空时，尝试用 address 拼出订阅 URL
       var rawUri = node.rawUri.trim();
       if (rawUri.isEmpty &&
           node.protocol.toUpperCase() == 'SUBSCRIPTION' &&
@@ -28,103 +26,50 @@ class RemoteVpnLineLoader {
         rawUri = addr.startsWith('http://') || addr.startsWith('https://')
             ? addr
             : 'https://$addr';
-        debugPrint('[VPN_LINE] rawUri empty, built from address: $rawUri');
       }
 
       if (rawUri.startsWith('http://') || rawUri.startsWith('https://')) {
-        debugPrint('[VPN_LINE] subscription url: $rawUri');
         final allNodes = await _subscriptionLoader.load(rawUri);
-        debugPrint('[VPN_LINE] total parsed: ${allNodes.length}');
 
-        // 过滤：只保留能识别出地区的节点（国旗不是默认 🌐）
-        final filtered = allNodes.where((n) => _hasKnownRegion(n.name)).toList();
-        debugPrint('[VPN_LINE] after filter: ${filtered.length}');
+        final filtered = allNodes.where((n) => _hasKnownRegion(n)).toList();
+        final nodesToUse = filtered.isNotEmpty ? filtered : allNodes;
 
-        if (filtered.isEmpty) {
-          // 拉取成功但没有解析到可用节点：不要清空已有缓存，回退到本地缓存，
-          // 避免一次异常的订阅内容把之前能用的线路覆盖掉。
-          debugPrint('[VPN_LINE] filter result empty, keep cache & fallback');
+        if (nodesToUse.isEmpty) {
           return _loadFromCacheOrEmpty();
         }
 
-        final normalized = _normalizeNodeIds(_compactNodes(filtered));
+        final normalized = _normalizeNodeIds(_compactNodes(nodesToUse));
         await _saveCacheList(normalized);
         return normalized;
       }
 
-      // rawUri 是直接的协议链接（vmess:// 等）
-      debugPrint('[VPN_LINE] parsed direct: ${jsonEncode(node.toJson())}');
       await _saveCacheList([node]);
       return [node];
     } catch (e) {
-      debugPrint('[VPN_LINE] load error: $e');
       final fallback = await _loadFromCacheOrEmpty();
-      if (fallback.isNotEmpty) return fallback;
+      if (fallback.isNotEmpty) {
+        return fallback;
+      }
       rethrow;
     }
   }
 
-  /// 回退到本地缓存：有可用缓存则返回过滤后的缓存，否则返回空列表。
-  /// 注意：这里不会写入缓存，保证原有缓存不被覆盖。
   Future<List<VpnNode>> _loadFromCacheOrEmpty() async {
     final cached = await _readCacheList();
     if (cached != null && cached.isNotEmpty) {
       final filteredCached = _normalizeNodeIds(
-        _compactNodes(cached.where((n) => _hasKnownRegion(n.name)).toList()),
+        _compactNodes(cached.where((n) => _hasKnownRegion(n)).toList()),
       );
-      debugPrint('[VPN_LINE] using filtered cached ${filteredCached.length} nodes');
-      return filteredCached;
+      if (filteredCached.isNotEmpty) {
+        return filteredCached;
+      }
+      return _normalizeNodeIds(_compactNodes(cached));
     }
     return const [];
   }
 
-  /// 判断节点名称是否包含可识别的地区关键词
-  bool _hasKnownRegion(String name) {
-    final lower = name.toLowerCase();
-    const keywords = [
-      'japan', 'jp', '日本',
-      'korea', 'kr', '韩国',
-      'hongkong', 'hong kong', 'hk', '香港',
-      'taiwan', 'tw', '台湾',
-      'singapore', 'sg', '新加坡',
-      'usa', 'us', 'united states', '美国',
-      'uk', 'united kingdom', 'britain', '英国',
-      'germany', 'de', '德国',
-      'france', 'fr', '法国',
-      'canada', 'ca', '加拿大',
-      'australia', 'au', '澳大利亚',
-      'russia', 'ru', '俄罗斯',
-      'india', 'in', '印度',
-      'brazil', 'br', '巴西',
-      'netherlands', 'nl', '荷兰',
-      'turkey', 'tr', '土耳其',
-      'vietnam', 'vn', '越南',
-      'thailand', 'th', '泰国',
-      'philippines', 'ph', '菲律宾',
-      'indonesia', 'id', '印尼',
-      'malaysia', 'my', '马来西亚',
-      'argentina', 'ar', '阿根廷',
-      'mexico', 'mx', '墨西哥',
-      'uae', '阿联酋',
-      'china', 'cn', '中国',
-    ];
-
-    // 也接受名称开头有国旗 emoji（区域指示符）
-    final hasFlag = RegExp(r'^[\u{1F1E6}-\u{1F1FF}]{2}', unicode: true).hasMatch(name.trim());
-    if (hasFlag) return true;
-
-    for (final kw in keywords) {
-      // 用单词边界匹配，避免 "in" 匹配 "line" 等
-      if (kw.length <= 2) {
-        // 短缩写：要求前后是非字母
-        final pattern = RegExp('(?<![a-z])${RegExp.escape(kw)}(?![a-z])');
-        if (pattern.hasMatch(lower)) return true;
-      } else {
-        if (lower.contains(kw)) return true;
-      }
-    }
-    return false;
-  }
+  bool _hasKnownRegion(VpnNode node) =>
+      hasRecognizableRegion(node.name, hintRegion: node.region);
 
   List<VpnNode> _normalizeNodeIds(List<VpnNode> nodes) {
     return [
@@ -161,14 +106,13 @@ class RemoteVpnLineLoader {
 
   String _displayNodeName(String rawName) {
     var name = rawName.trim();
-    // URL decode
-    try { name = Uri.decodeComponent(name); } catch (_) {}
-    // 去掉 | 或 ' - ' 后面的内容
+    try {
+      name = Uri.decodeComponent(name);
+    } catch (_) {}
     for (final separator in ['|', ' - ']) {
       final index = name.indexOf(separator);
       if (index > 0) name = name.substring(0, index).trim();
     }
-    // 去掉倍率后缀，如 -0.1倍、x0.5、×2（必须有倍/x/×字符才去掉）
     name = name.replaceAll(RegExp(r'[-_\s]*[\d.]+\s*[xX×倍][^\s]*'), '');
     name = name.replaceAll(RegExp(r'\s+'), ' ').trim();
     final flag = RegExp(r'^([\u{1F1E6}-\u{1F1FF}]{2})\s*', unicode: true).firstMatch(name);
@@ -180,7 +124,6 @@ class RemoteVpnLineLoader {
   Future<VpnNode> _fetchRemoteLine() async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
-    debugPrint('[VPN_LINE] fetching from: $kVpnLineApiUrl');
     try {
       final request = await client
           .getUrl(Uri.parse(kVpnLineApiUrl))
@@ -192,7 +135,6 @@ class RemoteVpnLineLoader {
           .transform(utf8.decoder)
           .join()
           .timeout(const Duration(seconds: 10));
-      debugPrint('[VPN_LINE] fetch status: ${response.statusCode}');
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('线路接口请求失败：${response.statusCode}');
       }
@@ -215,8 +157,6 @@ class RemoteVpnLineLoader {
       client.close(force: true);
     }
   }
-
-  // ── 缓存（存整个过滤后的列表）────────────────────────────────
 
   Future<File> _cacheFile() async {
     final dir = await getApplicationSupportDirectory();

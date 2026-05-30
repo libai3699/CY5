@@ -57,10 +57,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   @override
   void initState() {
     super.initState();
-    // ✅ 生成随机金额标识：9.87/88/89/90 四选一
+    // 应付金额 = 整数元 + 随机尾数 .87/.88/.89/.90，用于支付到账识别
+    // 例：9.9 → 9.87~9.90；29.7 → 29.87~29.90
     final random = Random();
     final cents = [87, 88, 89, 90][random.nextInt(4)];
-    _paymentAmount = widget.totalPrice - (100 - cents) / 100; // 例如：10 - 0.13 = 9.87
+    final yuan = widget.totalPrice.floor();
+    _paymentAmount = yuan + cents / 100;
     _usdtAmount = _paymentAmount / _usdtRate; // 初始化 USDT 金额
 
     _loadPaymentConfigs();

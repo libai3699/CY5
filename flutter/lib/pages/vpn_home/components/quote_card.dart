@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../data/api_config.dart';
+import 'skeleton_box.dart';
 
 class QuoteCard extends StatefulWidget {
   const QuoteCard({super.key});
@@ -25,7 +26,6 @@ class _QuoteCardState extends State<QuoteCard> {
   }
 
   Future<void> _loadQuote() async {
-    print('[QUOTE] loading from: $kQuoteApiUrl');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8);
     try {
@@ -34,7 +34,6 @@ class _QuoteCardState extends State<QuoteCard> {
           .timeout(const Duration(seconds: 8));
       final response = await request.close().timeout(const Duration(seconds: 8));
       final body = await response.transform(utf8.decoder).join();
-      print('[QUOTE] status: ${response.statusCode}');
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(body);
         final data = decoded?['data'];
@@ -43,11 +42,10 @@ class _QuoteCardState extends State<QuoteCard> {
             _content = data['content']?.toString();
             _loading = false;
           });
-          print('[QUOTE] content: $_content');
         }
       }
-    } catch (e) {
-      print('[QUOTE] error: $e');
+    } catch (_) {
+      // ignore
     } finally {
       client.close(force: true);
       if (mounted && _loading) setState(() => _loading = false);
@@ -56,7 +54,9 @@ class _QuoteCardState extends State<QuoteCard> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading || _dismissed || _content == null || _content!.isEmpty) {
+    if (_dismissed) return const SizedBox.shrink();
+    if (_loading) return _buildSkeleton();
+    if (_content == null || _content!.isEmpty) {
       return const SizedBox.shrink();
     }
 
@@ -89,6 +89,27 @@ class _QuoteCardState extends State<QuoteCard> {
                 size: 16,
                 color: const Color(0xFF9F1239).withOpacity(0.5),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.72),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Row(
+          children: [
+            Expanded(
+              child: SkeletonBox(
+                  width: double.infinity, height: 13, borderRadius: 6),
             ),
           ],
         ),
