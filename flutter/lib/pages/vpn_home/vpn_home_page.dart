@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
   bool _hasCheckedAppVersion = false;
   bool _isUpdateDialogVisible = false;
   bool _hasLoadedAppData = false;
+  // 记录当前 _appStatus 对应的登录 token，用于判断状态是否已是「当前会话」的最新数据。
+  // 登录刚返回、真实用户状态还没拉回时，它与新 session 的 token 不一致，
+  // 避免「去购买」按钮在空窗期闪现。游客态记为空串。
+  String? _appStatusToken;
   bool _connectInFlight = false;
   int _loadNodesGeneration = 0;
   DateTime? _lastConnectTipAt;
@@ -183,10 +188,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
             break;
           case 'disconnected':
             final wasConnected = _status == VpnStatus.connected;
+            final wasConnecting = _status == VpnStatus.connecting;
             _connectedAt = null;
             setState(() {
               _status = VpnStatus.disconnected;
-              _message = null;
+              if (wasConnected) {
+                _message = null;
+              } else if (wasConnecting && _message != null && _message!.contains('正在连接')) {
+                _message = '连接失败，请重试';
+              }
             });
             if (wasConnected) {
               _heartbeatTimer?.cancel();
@@ -223,6 +233,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       setState(() {
         _appStatus = status;
         _hasLoadedAppData = true;
+        _appStatusToken = token ?? '';
       });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
@@ -277,67 +288,37 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (!mounted || _isUpdateDialogVisible) return;
     _isUpdateDialogVisible = true;
     try {
-      await showDialog<void>(
+      await showGeneralDialog<void>(
         context: context,
         barrierDismissible: true,
-        builder: (dialogContext) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Text(
-            '发现新版本',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF881337),
+        barrierLabel: '发现新版本',
+        barrierColor: Colors.black.withOpacity(0.55),
+        transitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (dialogContext, _, __) {
+          return _UpdateDialog(
+            latestVersion: latestVersion,
+            currentVersion: kAppVersion,
+            appName: FlavorConfig.appName,
+            onUpdate: () async {
+              Navigator.of(dialogContext).pop();
+              await _openUpdateLink(latestVersion);
+            },
+            onLater: () => Navigator.of(dialogContext).pop(),
+          );
+        },
+        transitionBuilder: (_, animation, __, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: Transform.scale(
+              scale: 0.92 + 0.08 * curved.value,
+              child: child,
             ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${FlavorConfig.appName} 有可用更新，建议升级到最新版本。',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF9F1239),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                '当前版本：v$kAppVersion',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Color(0xFF6B7280),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '最新版本：v$latestVersion',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFE11D48),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFE11D48),
-              ),
-              onPressed: () async {
-                Navigator.of(dialogContext).pop();
-                await _openUpdateLink(latestVersion);
-              },
-              child: const Text('去更新'),
-            ),
-          ],
-        ),
+          );
+        },
       );
     } finally {
       _isUpdateDialogVisible = false;
@@ -1237,6 +1218,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
               ),
               if (_hasLoadedAppData &&
                   _session != null &&
+                  _appStatusToken == _session!.token &&
                   _appStatus.remainingSeconds <= 0 &&
                   !_hasActivePlan)
                 Padding(
@@ -1262,6 +1244,303 @@ class _VpnHomePageState extends State<VpnHomePage> {
                   ),
                 ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 科技风「发现新版本」弹框：深色玻璃拟态 + 霓虹光晕 + 呼吸动效。
+class _UpdateDialog extends StatefulWidget {
+  const _UpdateDialog({
+    required this.latestVersion,
+    required this.currentVersion,
+    required this.appName,
+    required this.onUpdate,
+    required this.onLater,
+  });
+
+  final String latestVersion;
+  final String currentVersion;
+  final String appName;
+  final VoidCallback onUpdate;
+  final VoidCallback onLater;
+
+  @override
+  State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _glow;
+
+  static const Color _accent = Color(0xFFFB7185); // 玫红霓虹（rose-400）
+  static const Color _accent2 = Color(0xFFE11D48); // 主题玫红（rose-600）
+  static const Color _panelTop = Color(0xFF2A0E1A); // 深玫红黑
+  static const Color _panelBottom = Color(0xFF120207);
+
+  @override
+  void initState() {
+    super.initState();
+    _glow = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _glow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: AnimatedBuilder(
+              animation: _glow,
+              builder: (context, child) {
+                final t = _glow.value;
+                return Container(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [_panelTop, _panelBottom],
+                    ),
+                    border: Border.all(
+                      color: _accent.withOpacity(0.30 + 0.25 * t),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _accent.withOpacity(0.18 + 0.16 * t),
+                        blurRadius: 34,
+                        spreadRadius: 1,
+                      ),
+                      BoxShadow(
+                        color: _accent2.withOpacity(0.12 + 0.12 * t),
+                        blurRadius: 50,
+                        spreadRadius: -6,
+                      ),
+                    ],
+                  ),
+                  child: child,
+                );
+              },
+              child: Material(
+                type: MaterialType.transparency,
+                child: _buildBody(context),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned(
+          top: -40,
+          right: -30,
+          child: _blurDot(_accent.withOpacity(0.35), 120),
+        ),
+        Positioned(
+          bottom: -50,
+          left: -40,
+          child: _blurDot(_accent2.withOpacity(0.30), 140),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildIcon(),
+              const SizedBox(height: 18),
+              const Text(
+                '发现新版本',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.5,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${widget.appName} 有新版本可用，升级以获得更稳定流畅的体验。',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: Colors.white.withOpacity(0.62),
+                ),
+              ),
+              const SizedBox(height: 22),
+              _buildVersionRow(),
+              const SizedBox(height: 24),
+              _buildUpdateButton(),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: widget.onLater,
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white.withOpacity(0.5),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+                child: const Text(
+                  '稍后再说',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIcon() {
+    return Center(
+      child: Container(
+        width: 72,
+        height: 72,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [_accent, _accent2],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _accent.withOpacity(0.5),
+              blurRadius: 22,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.rocket_launch_rounded,
+          color: Colors.white,
+          size: 36,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVersionRow() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _versionChip('当前', 'v${widget.currentVersion}',
+              Colors.white.withOpacity(0.5), false),
+          Icon(
+            Icons.arrow_forward_rounded,
+            color: _accent.withOpacity(0.9),
+            size: 22,
+          ),
+          _versionChip('最新', 'v${widget.latestVersion}', _accent, true),
+        ],
+      ),
+    );
+  }
+
+  Widget _versionChip(String label, String value, Color color, bool glow) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            letterSpacing: 1,
+            color: Colors.white.withOpacity(0.45),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: color,
+            shadows: glow
+                ? [Shadow(color: color.withOpacity(0.7), blurRadius: 12)]
+                : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildUpdateButton() {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [_accent, _accent2],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _accent.withOpacity(0.45),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: widget.onUpdate,
+          child: const SizedBox(
+            height: 52,
+            child: Center(
+              child: Text(
+                '立即更新',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _blurDot(Color color, double size) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: RadialGradient(
+            colors: [color, color.withOpacity(0)],
           ),
         ),
       ),

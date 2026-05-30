@@ -402,8 +402,11 @@ class VpnNativeChannel {
     try {
       final config = jsonDecode(configJson) as Map<String, dynamic>;
 
+      // DNS：localhost 优先（V2Ray 内部直连解析）；8.8.8.8/1.1.1.1 用对象形式，
+      // 原生 Android 层会跳过它们（非字符串），不向系统 TUN 注入外部 DNS。
       config['dns'] = {
         'servers': [
+          'localhost',
           {
             'address': '8.8.8.8',
             'port': 53,
@@ -412,11 +415,11 @@ class VpnNativeChannel {
             'address': '1.1.1.1',
             'port': 53,
           },
-          'localhost',
         ],
         'queryStrategy': 'UseIPv4',
       };
 
+      // 域名嗅探：让 V2Ray 从 TLS/HTTP 中识别真实域名，按域名路由。
       final inbounds = config['inbounds'];
       if (inbounds is List) {
         for (final inbound in inbounds) {
@@ -430,14 +433,41 @@ class VpnNativeChannel {
         }
       }
 
+      // 不使用 geoip:private（依赖 geoip.dat，本项目未打包该文件，会导致
+      // 核心加载路由失败、TUN 无法建立）。改用显式私网 CIDR 走直连，
+      // 其余全部走 proxy，确保公网流量经隧道出海、IP 改变。
+      final proxyRules = <Map<String, dynamic>>[
+        {
+          'type': 'field',
+          'ip': [
+            '127.0.0.0/8',
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16',
+            '169.254.0.0/16',
+            '224.0.0.0/4',
+          ],
+          'outboundTag': 'direct',
+        },
+        {
+          'type': 'field',
+          'network': 'tcp,udp',
+          'outboundTag': 'proxy',
+        },
+      ];
+
       if (config['routing'] == null) {
         config['routing'] = {
-          'domainStrategy': 'IPIfNonMatch',
-          'rules': <Map<String, dynamic>>[],
+          'domainStrategy': 'AsIs',
+          'rules': proxyRules,
         };
       } else if (config['routing'] is Map<String, dynamic>) {
         final routing = config['routing'] as Map<String, dynamic>;
-        routing['domainStrategy'] ??= 'IPIfNonMatch';
+        routing['domainStrategy'] = 'AsIs';
+        final existing = routing['rules'];
+        if (existing is! List || existing.isEmpty) {
+          routing['rules'] = proxyRules;
+        }
       }
 
       return jsonEncode(config);

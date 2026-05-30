@@ -91,7 +91,7 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
     private void setup() {
         Intent prepare_intent = prepare(this);
         if (prepare_intent != null) {
-            return;
+            throw new IllegalStateException("VPN permission not granted");
         }
         Builder builder = new Builder();
         builder.setSession(v2rayConfig.REMARK);
@@ -124,11 +124,27 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             JSONObject dnsObject = json.getJSONObject("dns");
             JSONArray serversArray = dnsObject.getJSONArray("servers");
             for (int i = 0; i < serversArray.length(); i++) {
-                String server = serversArray.getString(i);
-                builder.addDnsServer(server);
+                // DNS servers 可能是字符串或 {address,port} 对象；系统 VpnService
+                // 只接受数字 IP 的字符串。跳过对象、空串、以及 "localhost"
+                // （由 v2ray 内部 DNS 处理），否则 addDnsServer 会抛
+                // IllegalArgumentException 中断 TUN 建立。
+                Object item = serversArray.opt(i);
+                if (!(item instanceof String)) {
+                    continue;
+                }
+                String server = ((String) item).trim();
+                if (server.isEmpty() || server.equalsIgnoreCase("localhost")) {
+                    continue;
+                }
+                try {
+                    builder.addDnsServer(server);
+                } catch (Exception dnsErr) {
+                    Log.e(V2rayVPNService.class.getSimpleName(),
+                            "skip invalid dns server: " + server, dnsErr);
+                }
             }
-        } catch (JSONException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            Log.e(V2rayVPNService.class.getSimpleName(), "parse dns servers failed", e);
         }
         try {
             mInterface.close();
@@ -141,10 +157,15 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
 
         try {
             mInterface = builder.establish();
+            if (mInterface == null) {
+                throw new IllegalStateException("VPN interface establish() returned null");
+            }
             isRunning = true;
             runTun2socks();
         } catch (Exception e) {
+            Log.e(V2rayVPNService.class.getSimpleName(), "VPN setup failed", e);
             stopAllProcess();
+            throw new IllegalStateException("VPN tunnel setup failed", e);
         }
 
     }

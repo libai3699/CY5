@@ -182,6 +182,10 @@ public final class V2rayCoreManager {
             v2RayPoint.setConfigureFileContent(v2rayConfig.V2RAY_FULL_JSON_CONFIG);
             v2RayPoint.setDomainName(v2rayConfig.CONNECTED_V2RAY_SERVER_ADDRESS + ":" + v2rayConfig.CONNECTED_V2RAY_SERVER_PORT);
             v2RayPoint.runLoop(false);
+            if (!isV2rayCoreRunning()) {
+                Log.e(V2rayCoreManager.class.getSimpleName(), "startCore failed => core not running after runLoop");
+                return false;
+            }
             V2RAY_STATE = AppConfigs.V2RAY_STATES.V2RAY_CONNECTED;
         } catch (Exception e) {
             Log.e(V2rayCoreManager.class.getSimpleName(), "startCore failed =>", e);
@@ -261,14 +265,6 @@ public final class V2rayCoreManager {
         Service context = v2rayServicesListener.getService();
         if (context == null) {
             return;
-        }
-
-        // Check notification permission for Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED) {
-                return;
-            }
         }
 
         Intent launchIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
