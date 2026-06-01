@@ -27,6 +27,6 @@ const String kMarkNoticeReadUrl =
 const String kMarkAllReadUrl = '$kApiBaseUrl/api/app/user/notices/read-all';
 const String kTrackEventUrl = '$kApiBaseUrl/api/public/track';
 
-const String kAppVersion = '0.1.2';
+const String kAppVersion = '0.1.3';
 
 const String kFlavor = String.fromEnvironment('FLAVOR', defaultValue: 'vpn');

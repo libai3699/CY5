@@ -203,19 +203,24 @@ class VpnNativeChannel {
   }
 
   static Future<void> _ensureVpnStopped() async {
-    final hadActiveSession = _activeVpnSessionId > 0;
     _activeVpnSessionId = 0;
     _stopAndroidHealthCheck();
     _stopAndroidTrafficStats();
     _resetTrafficCounters();
-    if (!hadActiveSession) {
-      return;
-    }
     if (!_initialized || _v2ray == null) return;
+    // 始终尝试停止原生服务：即使本次 Dart 进程认为没有活动会话，
+    // 系统（尤其 MIUI 等激进保活机型）可能在后台冻结后仍保留了上一次
+    // App 会话的「僵尸」VPN 前台服务 / v2ray 核心（进程内单例）。
+    // 若不先彻底停止就直接 startV2Ray，原生会在「核心已运行」状态下
+    // 于同一次 onStartCommand 内执行 stopCore→stopLoop→shutdown 回调，
+    // 把 service listener 置空并 stopSelf，导致随后 startCore 的 setup
+    // 回调不执行、TUN 永不建立（表现为：顶部无 VPN 标识、公网 IP 不变）。
+    // 因此这里无条件停止并等待其 onDestroy，再由 startVpn 全新启动，
+    // 让原生创建一个全新的 service 实例（onCreate 重新 setUpListener）。
     try {
       await _v2ray!.stopV2Ray();
     } catch (_) {}
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(const Duration(milliseconds: 600));
   }
 
   Future<String?> prepareVpn() async {

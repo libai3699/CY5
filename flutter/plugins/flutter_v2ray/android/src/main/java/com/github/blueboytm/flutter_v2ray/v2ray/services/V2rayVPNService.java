@@ -44,6 +44,14 @@ public class V2rayVPNService extends VpnService implements V2rayServicesListener
             if (v2rayConfig == null) {
                 this.onDestroy();
             }
+            // 防御：v2ray 核心是进程内单例，其 listener 可能在上一次会话的
+            // shutdown() 回调中被置空。若本服务实例被系统复用来处理新的 START，
+            // 必须重新把 listener 绑定到当前实例，否则 startCore 的 setup() 回调
+            // 会因 listener 为 null 而跳过 builder.establish()，导致 TUN 无法建立
+            // （顶部无 VPN 标识、IP 不变）。
+            if (V2rayCoreManager.getInstance().v2rayServicesListener == null) {
+                V2rayCoreManager.getInstance().setUpListener(this);
+            }
             if (V2rayCoreManager.getInstance().isV2rayCoreRunning()) {
                 V2rayCoreManager.getInstance().stopCore();
             }
