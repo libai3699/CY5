@@ -4,13 +4,17 @@ class PaymentPageWindowsLayout extends StatelessWidget {
   const PaymentPageWindowsLayout({
     super.key,
     required this.leftContent,
-    required this.onContactPressed,
+    required this.onActionPressed,
+    required this.actionLabel,
+    required this.onlinePayment,
     this.previewTitle,
     this.previewImageUrl,
   });
 
   final Widget leftContent;
-  final VoidCallback onContactPressed;
+  final VoidCallback? onActionPressed;
+  final String actionLabel;
+  final bool onlinePayment;
   final String? previewTitle;
   final String? previewImageUrl;
 
@@ -55,7 +59,9 @@ class PaymentPageWindowsLayout extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '\u8bf7\u4f7f\u7528\u5de6\u4fa7\u5df2\u9009\u652f\u4ed8\u65b9\u5f0f\u8fdb\u884c\u626b\u7801\u6216\u8f6c\u8d26\uff0c\u5b8c\u6210\u652f\u4ed8\u540e\u518d\u8054\u7cfb\u4eba\u5de5\u786e\u8ba4\u3002',
+                    onlinePayment
+                        ? '\u70b9\u51fb\u4e0b\u65b9\u6309\u94ae\u6253\u5f00\u5728\u7ebf\u6536\u94f6\u53f0\uff0c\u652f\u4ed8\u6210\u529f\u540e\u7cfb\u7edf\u4f1a\u81ea\u52a8\u5f00\u901a\u5957\u9910\u3002'
+                        : '\u8bf7\u4f7f\u7528\u5de6\u4fa7\u5df2\u9009\u652f\u4ed8\u65b9\u5f0f\u8fdb\u884c\u626b\u7801\u6216\u8f6c\u8d26\uff0c\u5b8c\u6210\u652f\u4ed8\u540e\u518d\u8054\u7cfb\u4eba\u5de5\u786e\u8ba4\u3002',
                     style: TextStyle(
                       color: const Color(0xFF9F1239).withOpacity(0.72),
                       fontSize: 13,
@@ -98,16 +104,16 @@ class PaymentPageWindowsLayout extends StatelessWidget {
                   SizedBox(
                     height: 56,
                     child: FilledButton(
-                      onPressed: onContactPressed,
+                      onPressed: onActionPressed,
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFE11D48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      child: const Text(
-                        '\u5b8c\u6210\u652f\u4ed8\u540e\u8054\u7cfb\u5ba2\u670d',
-                        style: TextStyle(
+                      child: Text(
+                        actionLabel,
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w800,
                         ),

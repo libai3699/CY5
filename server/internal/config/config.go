@@ -20,8 +20,8 @@ type Config struct {
 	AdminJWTSecret string
 
 	// 管理员
-	AdminUsername     string
-	AdminPasswordHash string
+	AdminUsername      string
+	AdminPasswordHash  string
 	AdminCaptchaSecret string
 	AdminRole          string
 
@@ -53,11 +53,20 @@ type Config struct {
 	MinIOSecretKey string
 	MinIOBucket    string
 	MinIOUseSSL    string
+
+	// 易支付（支付宝/微信聚合支付）
+	EPayGatewayURL string
+	EPayPID        string
+	EPayKey        string
+	EPayNotifyURL  string
+	EPayReturnURL  string
+	EPaySiteName   string
 }
 
 var App Config
 
 func Load() {
+	_ = godotenv.Load(".env.local")
 	if err := godotenv.Load(); err != nil {
 		log.Println("[config] .env 文件未找到，使用系统环境变量")
 	}
@@ -72,15 +81,15 @@ func Load() {
 		JWTSecret:      mustEnv("JWT_SECRET"),
 		AdminJWTSecret: mustEnv("ADMIN_JWT_SECRET"),
 
-		AdminUsername:     getEnv("ADMIN_USERNAME", "admin"),
-		AdminPasswordHash: mustEnv("ADMIN_PASSWORD_HASH"),
+		AdminUsername:      getEnv("ADMIN_USERNAME", "admin"),
+		AdminPasswordHash:  mustEnv("ADMIN_PASSWORD_HASH"),
 		AdminCaptchaSecret: mustEnv("ADMIN_CAPTCHA_SECRET"),
 		AdminRole:          getEnv("ADMIN_ROLE", "super_admin"),
 
 		AppSecret: mustEnv("APP_SECRET"),
 
-		ServerPort: getEnv("SERVER_PORT", "8080"),
-		GinMode:    getEnv("GIN_MODE", "debug"),
+		ServerPort:      getEnv("SERVER_PORT", "8080"),
+		GinMode:         getEnv("GIN_MODE", "debug"),
 		StorageProvider: getEnv("STORAGE_PROVIDER", ""),
 
 		OSSEndpoint:        getEnv("OSS_ENDPOINT", ""),
@@ -98,6 +107,13 @@ func Load() {
 		MinIOSecretKey: getEnv("MINIO_SECRET_KEY", ""),
 		MinIOBucket:    getEnv("MINIO_BUCKET", ""),
 		MinIOUseSSL:    getEnv("MINIO_USE_SSL", "false"),
+
+		EPayGatewayURL: getEnv("EPAY_GATEWAY_URL", "https://www.ezfpy.cn/submit.php"),
+		EPayPID:        getEnv("EPAY_PID", ""),
+		EPayKey:        getEnv("EPAY_KEY", ""),
+		EPayNotifyURL:  getEnv("EPAY_NOTIFY_URL", ""),
+		EPayReturnURL:  getEnv("EPAY_RETURN_URL", ""),
+		EPaySiteName:   getEnv("EPAY_SITENAME", "CY5"),
 	}
 }
 

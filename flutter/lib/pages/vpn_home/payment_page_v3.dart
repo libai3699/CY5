@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/platform/gallery_saver.dart';
 import '../../utils/platform_utils.dart';
@@ -47,8 +47,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   String? _error;
   double _usdtRate = 7.2;
   String? _orderNo;
+  bool _creatingPayment = false;
 
-  // 生成带随机小数的金额作为标识
+  // 仅用于界面展示；实际支付金额始终由服务端按套餐计算。
   late final double _paymentAmount;
   late double _usdtAmount;
 
@@ -57,12 +58,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   @override
   void initState() {
     super.initState();
-    // 应付金额 = 整数元 + 随机尾数 .87/.88/.89/.90，用于支付到账识别
-    // 例：9.9 → 9.87~9.90；29.7 → 29.87~29.90
-    final random = Random();
-    final cents = [87, 88, 89, 90][random.nextInt(4)];
-    final yuan = widget.totalPrice.floor();
-    _paymentAmount = yuan + cents / 100;
+    _paymentAmount = widget.totalPrice;
     _usdtAmount = _paymentAmount / _usdtRate; // 初始化 USDT 金额
 
     _loadPaymentConfigs();
@@ -142,6 +138,130 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     } finally {
       client.close(force: true);
     }
+  }
+
+  Future<void> _startOnlinePayment() async {
+    if (!_loggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先登录后再发起在线支付')),
+      );
+      return;
+    }
+    if (_selectedChannel != 'alipay' && _selectedChannel != 'wechat') {
+      _openContact();
+      return;
+    }
+
+    setState(() => _creatingPayment = true);
+    final client = HttpClient();
+    try {
+      final request = await client.postUrl(Uri.parse(kPaymentOrdersApiUrl));
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer ${widget.token}');
+      request.write(jsonEncode({
+        'plan_id': widget.planId,
+        'billing_cycle': widget.billingCycle,
+        'pay_type': _selectedChannel == 'wechat' ? 'wxpay' : 'alipay',
+      }));
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          (decoded['code'] as num?)?.toInt() != 0) {
+        throw Exception(decoded['message']?.toString() ?? '创建支付订单失败');
+      }
+      final data = decoded['data'] as Map<String, dynamic>?;
+      final payUrl = data?['pay_url']?.toString() ?? '';
+      final orderNo = data?['order_no']?.toString() ?? '';
+      if (payUrl.isEmpty || orderNo.isEmpty) {
+        throw Exception('支付接口返回数据不完整');
+      }
+      _orderNo = orderNo;
+      final opened = await launchUrl(
+        Uri.parse(payUrl),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) throw Exception('无法打开支付页面');
+      if (mounted) await _showPaymentResultDialog();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+    } finally {
+      client.close(force: true);
+      if (mounted) setState(() => _creatingPayment = false);
+    }
+  }
+
+  Future<bool> _checkPaymentStatus() async {
+    if (_orderNo == null || widget.token == null) return false;
+    final client = HttpClient();
+    try {
+      final request = await client.getUrl(
+        Uri.parse('$kPaymentOrdersApiUrl/${Uri.encodeComponent(_orderNo!)}'),
+      );
+      request.headers.set('Authorization', 'Bearer ${widget.token}');
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      final data = decoded['data'];
+      return decoded['code'] == 0 &&
+          data is Map<String, dynamic> &&
+          data['status'] == 'paid';
+    } catch (_) {
+      return false;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _checkAndShowStatus() async {
+    final paid = await _checkPaymentStatus();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(paid ? '支付已到账，套餐已自动开通' : '暂未到账，请稍后再检查'),
+      ),
+    );
+  }
+
+  Future<void> _showPaymentResultDialog() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('已打开支付页面'),
+        content: Text('订单号：$_orderNo\n完成付款后回到这里检查到账结果。请勿为同一订单重复付款。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('稍后检查'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final paid = await _checkPaymentStatus();
+              if (!mounted || !dialogContext.mounted) return;
+              if (paid) {
+                Navigator.of(dialogContext).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('支付已到账，套餐已自动开通')),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('暂未到账，请稍后再检查')),
+                );
+              }
+            },
+            child: const Text('检查到账'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _copyText(String text, String label) {
@@ -497,7 +617,13 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _openContact,
+                  onPressed: _creatingPayment
+                      ? null
+                      : (_selectedChannel == 'usdt'
+                          ? _openContact
+                          : _orderNo == null
+                              ? _startOnlinePayment
+                              : _checkAndShowStatus),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFE11D48),
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -505,9 +631,16 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
-                    '完成支付后联系客服',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  child: Text(
+                    _creatingPayment
+                        ? '正在创建订单...'
+                        : _selectedChannel == 'usdt'
+                            ? '完成支付后联系客服'
+                            : _orderNo == null
+                                ? '前往在线支付'
+                                : '检查订单状态',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800),
                   ),
                 ),
               ),
@@ -523,7 +656,21 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       leftContent: _buildWindowsLeftContentClean(),
       previewTitle: _selectedPreviewTitleClean,
       previewImageUrl: _selectedPreviewImageUrl,
-      onContactPressed: _openContact,
+      onActionPressed: _creatingPayment
+          ? null
+          : (_selectedChannel == 'usdt'
+              ? _openContact
+              : _orderNo == null
+                  ? _startOnlinePayment
+                  : _checkAndShowStatus),
+      actionLabel: _creatingPayment
+          ? '正在创建订单...'
+          : _selectedChannel == 'usdt'
+              ? '完成支付后联系客服'
+              : _orderNo == null
+                  ? '前往在线支付'
+                  : '检查订单状态',
+      onlinePayment: _selectedChannel != 'usdt',
     );
   }
 

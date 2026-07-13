@@ -2,6 +2,7 @@
 server/bin/
 server/*.exe
 server/.env
+server/.env.local
 server/uploads/
 server/logs/
 server/app

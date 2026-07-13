@@ -25,6 +25,7 @@ func Migrate() {
 		&model.UserNoticeRead{},
 		&model.Quote{},
 		&model.PaymentConfig{},
+		&model.PaymentOrder{},
 		&model.DurationLog{},
 		&model.PageEvent{},
 	)

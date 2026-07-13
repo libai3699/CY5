@@ -16,6 +16,7 @@ const String kNoticesApiUrl = '$kApiBaseUrl/api/public/notices';
 const String kPlansApiUrl = '$kApiBaseUrl/api/public/plans';
 const String kQuoteApiUrl = '$kApiBaseUrl/api/public/quote';
 const String kPaymentConfigsApiUrl = '$kApiBaseUrl/api/public/payment-configs';
+const String kPaymentOrdersApiUrl = '$kApiBaseUrl/api/public/payment/orders';
 const String kContactApiUrl = '$kApiBaseUrl/api/public/contact';
 const String kUserNoticesApiUrl = '$kApiBaseUrl/api/public/user/notices';
 const String kUserStatusApiUrl = '$kApiBaseUrl/api/public/user/status';
