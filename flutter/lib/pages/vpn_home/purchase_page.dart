@@ -61,10 +61,16 @@ class _PurchasePageState extends State<PurchasePage> {
     } catch (_) {}
   }
 
-  Future<void> _track(String event, {int stayMs = 0, String? planName, double? planPrice, String? cycle}) async {
+  Future<void> _track(String event,
+      {int stayMs = 0,
+      String? planName,
+      double? planPrice,
+      String? cycle}) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
-      final req = await client.postUrl(Uri.parse(kTrackEventUrl)).timeout(const Duration(seconds: 5));
+      final req = await client
+          .postUrl(Uri.parse(kTrackEventUrl))
+          .timeout(const Duration(seconds: 5));
       req.headers.contentType = ContentType.json;
       req.write(jsonEncode({
         'page': 'purchase',
@@ -101,10 +107,8 @@ class _PurchasePageState extends State<PurchasePage> {
       final decoded = jsonDecode(body);
       final list = decoded?['data'];
       if (list is List) {
-        final plans = list
-            .whereType<Map<String, dynamic>>()
-            .map(_Plan.fromJson)
-            .toList();
+        final plans =
+            list.whereType<Map<String, dynamic>>().map(_Plan.fromJson).toList();
         if (mounted) {
           setState(() {
             _plans = plans;
@@ -115,10 +119,10 @@ class _PurchasePageState extends State<PurchasePage> {
       } else {
         throw Exception('数据格式错误');
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = '\u5957\u9910\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5';
           _loading = false;
         });
       }
@@ -161,15 +165,230 @@ class _PurchasePageState extends State<PurchasePage> {
   }
 
   Widget _buildBody() {
+    return _buildCompactBodyV3();
+  }
+
+  Widget _buildCompactBodyV3() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFFE11D48)));
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFE11D48)),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: FilledButton.icon(
+          onPressed: _loadPlans,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('\u91cd\u8bd5'),
+        ),
+      );
+    }
+    if (_plans.isEmpty) {
+      return const Center(child: Text('\u6682\u65e0\u53ef\u8d2d\u5957\u9910'));
+    }
+
+    final plan = _selectedPlan;
+    final total = plan?.totalFor(_cycle) ?? 0;
+    final original = plan?.originalFor(_cycle) ?? 0;
+    final discount = plan?.discountFor(_cycle) ?? 1;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            itemCount: _plans.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 7),
+            itemBuilder: (context, index) {
+              final item = _plans[index];
+              final selected = item.id == _selectedId;
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedId = item.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: 62,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: selected ? const Color(0xFFFFD5DF) : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xFFE11D48)
+                          : const Color(0xFFF5D5DD),
+                      width: selected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
+                        color: selected
+                            ? const Color(0xFFE11D48)
+                            : const Color(0xFFC99AA7),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF3F1723),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${item.durationDays} \u5929  ·  ${item.trafficText}',
+                              style: const TextStyle(
+                                color: Color(0xFF8A6872),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '¥${item.price.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: selected
+                              ? const Color(0xFFE11D48)
+                              : const Color(0xFF881337),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const Text('/\u6708',
+                          style: TextStyle(
+                              color: Color(0xFF8A6872), fontSize: 10)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x14881337),
+                blurRadius: 18,
+                offset: Offset(0, -6),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              _CycleTabs(
+                selected: _cycle,
+                onChanged: (value) => setState(() => _cycle = value),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text(
+                    '\u652f\u4ed8\u91d1\u989d',
+                    style: TextStyle(
+                      color: Color(0xFF6F4B57),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  if (discount < 1) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD5DF),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${(discount * 10).toStringAsFixed(1)} \u6298',
+                        style: const TextStyle(
+                          color: Color(0xFFE11D48),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (original > total) ...[
+                    Text(
+                      '¥${original.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Color(0xFF8A6872),
+                        fontSize: 12,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    '¥${total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Color(0xFF881337),
+                      fontSize: 25,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: FilledButton(
+                  onPressed: _selectedId == null ? null : _onBuy,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE11D48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    '\u7acb\u5373\u8d2d\u4e70',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactBodyV2() {
+    if (_loading) {
+      return const Center(
+          child: CircularProgressIndicator(color: Color(0xFFE11D48)));
     }
     if (_error != null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_error!, style: const TextStyle(color: Color(0xFF9F1239), fontSize: 13)),
+            Text(_error!,
+                style: const TextStyle(color: Color(0xFF9F1239), fontSize: 13)),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _loadPlans,
@@ -186,6 +405,155 @@ class _PurchasePageState extends State<PurchasePage> {
       );
     }
 
+    final selected = _selectedPlan;
+    final total = selected?.totalFor(_cycle) ?? 0;
+    final original = selected?.originalFor(_cycle) ?? 0;
+    final discount = selected?.discountFor(_cycle) ?? 1;
+
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+            itemCount: _plans.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 7),
+            itemBuilder: (context, index) {
+              final plan = _plans[index];
+              final selected = plan.id == _selectedId;
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedId = plan.id),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  height: 62,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: selected ? const Color(0xFFFFD5DF) : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: selected
+                          ? const Color(0xFFE11D48)
+                          : const Color(0xFFF5D5DD),
+                      width: selected ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        selected
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
+                        color: selected
+                            ? const Color(0xFFE11D48)
+                            : const Color(0xFFC99AA7),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(plan.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Color(0xFF3F1723),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text(
+                                '${plan.durationDays} \u5929  ·  ${plan.trafficText}',
+                                style: const TextStyle(
+                                    color: Color(0xFF8A6872), fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                      Text('¥${plan.price.toStringAsFixed(2)}',
+                          style: TextStyle(
+                              color: selected
+                                  ? const Color(0xFFE11D48)
+                                  : const Color(0xFF881337),
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900)),
+                      const Text('/\u6708',
+                          style: TextStyle(
+                              color: Color(0xFF8A6872), fontSize: 10)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+            boxShadow: [
+              BoxShadow(
+                  color: Color(0x14881337),
+                  blurRadius: 18,
+                  offset: Offset(0, -6))
+            ],
+          ),
+          child: Column(
+            children: [
+              _CycleTabs(
+                  selected: _cycle,
+                  onChanged: (value) => setState(() => _cycle = value)),
+              const SizedBox(height: 9),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            discount < 1
+                                ? '${(discount * 10).toStringAsFixed(1)} \u6298'
+                                : '\u5f53\u524d\u65e0\u6298\u6263',
+                            style: const TextStyle(
+                                color: Color(0xFFE11D48),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800)),
+                        if (original > total)
+                          Text('¥${original.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                  color: Color(0xFF8A6872),
+                                  fontSize: 11,
+                                  decoration: TextDecoration.lineThrough)),
+                      ],
+                    ),
+                  ),
+                  Text('¥${total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          color: Color(0xFF881337),
+                          fontSize: 25,
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    onPressed: _selectedId == null ? null : _onBuy,
+                    style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFE11D48),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 22, vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                    child: const Text('\u7acb\u5373\u8d2d\u4e70',
+                        style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegacyBodyUnused() {
     final selected = _selectedPlan;
     final total = selected?.totalFor(_cycle) ?? 0;
     final original = selected?.originalFor(_cycle) ?? 0;
@@ -212,7 +580,9 @@ class _PurchasePageState extends State<PurchasePage> {
                         : Colors.white.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: isSelected ? const Color(0xFFE11D48) : Colors.transparent,
+                      color: isSelected
+                          ? const Color(0xFFE11D48)
+                          : Colors.transparent,
                       width: 1.5,
                     ),
                     boxShadow: [
@@ -231,12 +601,19 @@ class _PurchasePageState extends State<PurchasePage> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isSelected ? const Color(0xFFE11D48) : const Color(0xFFCCCCCC),
+                            color: isSelected
+                                ? const Color(0xFFE11D48)
+                                : const Color(0xFFCCCCCC),
                             width: 2,
                           ),
-                          color: isSelected ? const Color(0xFFE11D48) : Colors.transparent,
+                          color: isSelected
+                              ? const Color(0xFFE11D48)
+                              : Colors.transparent,
                         ),
-                        child: isSelected ? const Icon(Icons.check, size: 12, color: Colors.white) : null,
+                        child: isSelected
+                            ? const Icon(Icons.check,
+                                size: 12, color: Colors.white)
+                            : null,
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -246,7 +623,9 @@ class _PurchasePageState extends State<PurchasePage> {
                             Text(
                               plan.name,
                               style: TextStyle(
-                                color: isSelected ? const Color(0xFFE11D48) : const Color(0xFF881337),
+                                color: isSelected
+                                    ? const Color(0xFFE11D48)
+                                    : const Color(0xFF881337),
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -254,7 +633,8 @@ class _PurchasePageState extends State<PurchasePage> {
                             const SizedBox(height: 4),
                             Text(
                               '${plan.durationDays} 天 · ${plan.trafficText}',
-                              style: const TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+                              style: const TextStyle(
+                                  color: Color(0xFF9F1239), fontSize: 13),
                             ),
                           ],
                         ),
@@ -262,7 +642,9 @@ class _PurchasePageState extends State<PurchasePage> {
                       Text(
                         '¥${plan.price.toStringAsFixed(2)}/月',
                         style: TextStyle(
-                          color: isSelected ? const Color(0xFFE11D48) : const Color(0xFF881337),
+                          color: isSelected
+                              ? const Color(0xFFE11D48)
+                              : const Color(0xFF881337),
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),
@@ -298,12 +680,20 @@ class _PurchasePageState extends State<PurchasePage> {
                         children: [
                           Text(
                             '${_cycle.label}总价',
-                            style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                                color: Color(0xFF9F1239),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            discount < 1 ? '${(discount * 10).toStringAsFixed(1)}折优惠' : '月付原价',
-                            style: const TextStyle(color: Color(0xFFE11D48), fontSize: 12, fontWeight: FontWeight.w700),
+                            discount < 1
+                                ? '${(discount * 10).toStringAsFixed(1)}折优惠'
+                                : '月付原价',
+                            style: const TextStyle(
+                                color: Color(0xFFE11D48),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700),
                           ),
                         ],
                       ),
@@ -321,7 +711,10 @@ class _PurchasePageState extends State<PurchasePage> {
                     ],
                     Text(
                       '¥${total.toStringAsFixed(2)}',
-                      style: const TextStyle(color: Color(0xFF881337), fontSize: 24, fontWeight: FontWeight.w900),
+                      style: const TextStyle(
+                          color: Color(0xFF881337),
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900),
                     ),
                   ],
                 ),
@@ -334,15 +727,19 @@ class _PurchasePageState extends State<PurchasePage> {
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFE11D48),
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
-                  child: const Text('立即购买', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  child: const Text('立即购买',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                 ),
               ),
               const SizedBox(height: 10),
               TextButton(
                 onPressed: _openContact,
-                child: const Text('遇到问题？联系客服', style: TextStyle(color: Color(0xFF9F1239), fontSize: 13)),
+                child: const Text('遇到问题？联系客服',
+                    style: TextStyle(color: Color(0xFF9F1239), fontSize: 13)),
               ),
             ],
           ),
@@ -357,7 +754,10 @@ class _PurchasePageState extends State<PurchasePage> {
 
     final total = selected.totalFor(_cycle);
     // 埋点：点击购买
-    _track('click_buy', planName: selected.name, planPrice: selected.price, cycle: _cycle.label);
+    _track('click_buy',
+        planName: selected.name,
+        planPrice: selected.price,
+        cycle: _cycle.label);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PaymentPageV3(
@@ -465,7 +865,8 @@ class _Plan {
 
   double originalFor(_BillingCycle cycle) => price * cycle.months;
 
-  double totalFor(_BillingCycle cycle) => originalFor(cycle) * discountFor(cycle);
+  double totalFor(_BillingCycle cycle) =>
+      originalFor(cycle) * discountFor(cycle);
 
   factory _Plan.fromJson(Map<String, dynamic> json) {
     return _Plan(
@@ -476,7 +877,9 @@ class _Plan {
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: json['name']?.toString() ?? '',
       price: (json['price'] as num?)?.toDouble() ?? 0,
-      trafficGb: json['traffic_gb'] == null ? null : (json['traffic_gb'] as num?)?.toInt(),
+      trafficGb: json['traffic_gb'] == null
+          ? null
+          : (json['traffic_gb'] as num?)?.toInt(),
     );
   }
 }

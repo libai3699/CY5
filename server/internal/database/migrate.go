@@ -24,6 +24,7 @@ func Migrate() {
 		&model.AdminLoginLog{},
 		&model.UserNoticeRead{},
 		&model.Quote{},
+		&model.DiscoveryItem{},
 		&model.PaymentConfig{},
 		&model.PaymentOrder{},
 		&model.DurationLog{},
@@ -154,6 +155,7 @@ func seedPaymentConfigs() {
 		{Type: "usdt_erc20", Label: "USDT (ERC20)", Address: "", QRCode: "", IsActive: 1, SortOrder: 3, Remark: "请填写ERC20网络的USDT收款地址"},
 		{Type: "wechat", Label: "微信支付", Address: "", QRCode: "", IsActive: 1, SortOrder: 4, Remark: "请上传微信收款二维码"},
 		{Type: "alipay", Label: "支付宝", Address: "", QRCode: "", IsActive: 1, SortOrder: 5, Remark: "请上传支付宝收款二维码"},
+		{Type: "qq", Label: "QQ支付", Address: "", QRCode: "", IsActive: 1, SortOrder: 6, Remark: "请上传QQ收款二维码"},
 	}
 
 	for _, cfg := range configs {

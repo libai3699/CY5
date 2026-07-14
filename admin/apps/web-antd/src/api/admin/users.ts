@@ -18,6 +18,9 @@ export interface User {
   traffic_used_bytes: number;
   traffic_limit_bytes: number | null;
   last_login_at: string | null;
+  last_active_at: string | null;
+  is_online: boolean;
+  online_devices: number;
   created_at: string;
 }
 

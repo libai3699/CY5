@@ -11,7 +11,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
+
+const userOnlineWindow = 2 * time.Minute
+
+type userDeviceSummary struct {
+	displayID     string
+	lastIP        string
+	lastSeenAt    *time.Time
+	onlineDevices int
+}
 
 // ListUsers 用户列表（分页 + 搜索）
 func ListUsers(c *gin.Context) {
@@ -43,28 +53,56 @@ func ListUsers(c *gin.Context) {
 
 	safe := make([]gin.H, 0, len(users))
 
-	// 批量查出所有用户对应设备的展示 ID 和最后 IP
-	deviceIDs := make([]string, 0, len(users))
+	// 批量汇总用户所有已绑定设备。最近两分钟有鉴权请求即视为在线。
+	userIDs := make([]uint64, 0, len(users))
 	for _, u := range users {
-		if u.DeviceID != "" {
-			deviceIDs = append(deviceIDs, u.DeviceID)
-		}
+		userIDs = append(userIDs, u.ID)
 	}
-	deviceMap := make(map[string]model.Device)
-	if len(deviceIDs) > 0 {
+	deviceMap := make(map[uint64]*userDeviceSummary)
+	if len(userIDs) > 0 {
 		var devices []model.Device
-		database.DB.Select("device_id, display_id, last_ip").Where("device_id IN ?", deviceIDs).Find(&devices)
+		database.DB.Select("user_id, display_id, last_ip, last_seen_at").
+			Where("user_id IN ?", userIDs).
+			Order("last_seen_at desc, updated_at desc").
+			Find(&devices)
+		onlineCutoff := time.Now().Add(-userOnlineWindow)
 		for _, d := range devices {
-			deviceMap[d.DeviceID] = d
+			if d.UserID == nil {
+				continue
+			}
+			summary := deviceMap[*d.UserID]
+			if summary == nil {
+				summary = &userDeviceSummary{
+					displayID:  d.DisplayID,
+					lastIP:     d.LastIP,
+					lastSeenAt: d.LastSeenAt,
+				}
+				deviceMap[*d.UserID] = summary
+			}
+			if d.LastSeenAt != nil && d.LastSeenAt.After(onlineCutoff) {
+				summary.onlineDevices++
+			}
 		}
 	}
 
 	for _, u := range users {
 		h := safeUserAdmin(u)
-		device := deviceMap[u.DeviceID]
-		h["display_id"] = device.DisplayID
-		h["last_ip"] = device.LastIP
-		h["last_ip_detail"] = describeIP(device.LastIP)
+		summary := deviceMap[u.ID]
+		if summary == nil {
+			h["display_id"] = ""
+			h["last_ip"] = ""
+			h["last_ip_detail"] = describeIP("")
+			h["last_active_at"] = nil
+			h["online_devices"] = 0
+			h["is_online"] = false
+		} else {
+			h["display_id"] = summary.displayID
+			h["last_ip"] = summary.lastIP
+			h["last_ip_detail"] = describeIP(summary.lastIP)
+			h["last_active_at"] = summary.lastSeenAt
+			h["online_devices"] = summary.onlineDevices
+			h["is_online"] = summary.onlineDevices > 0
+		}
 		safe = append(safe, h)
 	}
 
@@ -187,7 +225,53 @@ func DeleteUser(c *gin.Context) {
 		handler.Fail(c, 404, "用户不存在")
 		return
 	}
-	database.DB.Delete(&user)
+	if err := database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.Device{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.User{}).
+			Where("inviter_id = ?", user.ID).
+			Update("inviter_id", nil).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("inviter_id = ? OR invitee_id = ?", user.ID, user.ID).
+			Delete(&model.InviteRewardLog{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("target_user_id = ?", user.ID).
+			Delete(&model.Notice{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.UserNoticeRead{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.UserLoginLog{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.DurationLog{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.OrderRecord{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.PaymentOrder{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.ID).
+			Delete(&model.PageEvent{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&user).Error
+	}); err != nil {
+		handler.Fail(c, 500, "删除用户失败")
+		return
+	}
 	handler.OK(c, gin.H{"msg": "删除成功"})
 }
 

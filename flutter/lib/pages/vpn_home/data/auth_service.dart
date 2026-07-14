@@ -7,6 +7,16 @@ import 'package:path_provider/path_provider.dart';
 import 'api_config.dart';
 import 'device_identity.dart';
 
+String _formatApiDateTime(String? value) {
+  if (value == null || value.isEmpty) return '';
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) return value;
+  final local = parsed.toLocal();
+  String two(int number) => number.toString().padLeft(2, '0');
+  return '${local.year}-${two(local.month)}-${two(local.day)} '
+      '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+}
+
 class AuthSession {
   const AuthSession({
     required this.token,
@@ -78,6 +88,7 @@ class AuthService {
   Future<AuthSession> login({
     required String username,
     required String password,
+    bool forceLogin = false,
   }) async {
     final deviceId = await const DeviceIdentity().getOrCreateDeviceId();
     print('[AUTH] login start username=$username device_id=$deviceId');
@@ -85,6 +96,7 @@ class AuthService {
       'username': username,
       'password': password,
       'device_id': deviceId,
+      'force_login': forceLogin,
     });
   }
 
@@ -205,7 +217,14 @@ class AuthService {
         throw Exception('接口数据格式错误');
       }
       if (decoded['code'] != 0) {
-        throw Exception(decoded['message']?.toString() ?? '请求失败');
+        final rawData = decoded['data'];
+        throw AuthException(
+          code: int.tryParse(decoded['code']?.toString() ?? '') ?? -1,
+          message: decoded['message']?.toString() ?? '请求失败',
+          data: rawData is Map<String, dynamic>
+              ? rawData
+              : const <String, dynamic>{},
+        );
       }
       final data = decoded['data'];
       if (data is! Map<String, dynamic>) {
@@ -230,29 +249,61 @@ class AuthService {
   }
 }
 
+class AuthException implements Exception {
+  const AuthException({
+    required this.code,
+    required this.message,
+    this.data = const <String, dynamic>{},
+  });
+
+  final int code;
+  final String message;
+  final Map<String, dynamic> data;
+
+  @override
+  String toString() => message;
+}
+
 class LoginDevice {
   const LoginDevice({
     required this.id,
     required this.displayId,
     required this.name,
     required this.lastSeenAt,
+    required this.ip,
+    required this.location,
   });
 
   final int id;
   final String displayId;
   final String name;
   final String lastSeenAt;
+  final String ip;
+  final String location;
 
   factory LoginDevice.fromJson(Map<String, dynamic> json) {
     final brand = json['brand']?.toString() ?? '';
     final model = json['model']?.toString() ?? '';
     final name = [brand, model].where((item) => item.isNotEmpty).join(' ');
+    final ipDetail = json['last_ip_detail'];
+    final rawLocation = ipDetail is Map<String, dynamic>
+        ? ipDetail['location']?.toString() ?? ''
+        : '';
+    const hiddenLocations = <String>{
+      '',
+      '\u672a\u77e5',
+      '\u672c\u673a',
+      '\u5185\u7f51',
+      'GeoIP \u67e5\u8be2\u5931\u8d25',
+    };
     return LoginDevice(
       id: int.tryParse(json['id']?.toString() ?? '') ?? 0,
       displayId:
           json['display_id']?.toString() ?? json['device_id']?.toString() ?? '',
       name: name.isEmpty ? '未知设备' : name,
-      lastSeenAt: json['last_seen_at']?.toString() ?? '',
+      lastSeenAt: _formatApiDateTime(json['last_seen_at']?.toString()),
+      ip: json['last_ip']?.toString() ?? '',
+      location: hiddenLocations.contains(rawLocation) ? '' : rawLocation,
     );
   }
 }

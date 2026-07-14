@@ -42,8 +42,7 @@ class VpnControlPanel extends StatelessWidget {
     final screenHeight = MediaQuery.sizeOf(context).height;
     final compact = screenHeight < 720;
     final statusText = switch (status) {
-      VpnStatus.disconnected =>
-        isLoadingNodes ? '线路测速中' : '点击连接',
+      VpnStatus.disconnected => isLoadingNodes ? '线路测速中' : '点击连接',
       VpnStatus.connecting => '连接中',
       VpnStatus.connected => '点击关闭',
     };
@@ -53,7 +52,8 @@ class VpnControlPanel extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(20, compact ? 4 : 6, 20, 24),
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          minHeight: MediaQuery.sizeOf(context).height * (compact ? 0.58 : 0.66),
+          minHeight:
+              MediaQuery.sizeOf(context).height * (compact ? 0.58 : 0.66),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -78,7 +78,8 @@ class VpnControlPanel extends StatelessWidget {
               Text(
                 message!,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
+                style:
+                    const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
               ),
             ],
             SizedBox(height: compact ? 20 : 34),
@@ -117,7 +118,8 @@ class VpnControlPanel extends StatelessWidget {
                       textAlign: TextAlign.center,
                       maxLines: 6,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12),
+                      style: const TextStyle(
+                          color: Color(0xFF9F1239), fontSize: 12),
                     ),
                     const SizedBox(height: 10),
                   ],
@@ -164,7 +166,11 @@ class _InfoChip extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             label,
-            style: const TextStyle(color: Color(0xFF9F1239), fontSize: 12, fontWeight: FontWeight.w700),
+            style: const TextStyle(
+              color: Color(0xFF9F1239),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(width: 28),
           if (loading)
@@ -172,7 +178,11 @@ class _InfoChip extends StatelessWidget {
           else
             Text(
               value,
-              style: const TextStyle(color: Color(0xFF881337), fontSize: 15, fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                color: Color(0xFF881337),
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
             ),
         ],
       ),
@@ -180,7 +190,6 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-/// 测速/线路加载中的占位骨架，外形与 [NodeSelector] 保持一致。
 class _NodeSelectorSkeleton extends StatelessWidget {
   const _NodeSelectorSkeleton();
 

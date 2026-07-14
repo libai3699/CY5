@@ -1,3 +1,5 @@
+import 'discoveries_page.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -92,9 +94,23 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
-  bool get _keepVpnConnected => true;
   bool get _hasActivePlan =>
       _appStatus.planLevel != '免费体验' && _appStatus.remainingSeconds > 0;
+
+  bool get _hasTrafficAvailable {
+    if (_appStatus.planLevel == '免费体验' && _appStatus.remainingSeconds > 0) {
+      return true;
+    }
+    final text = _appStatus.trafficRemaining.trim().toLowerCase();
+    if (text.contains('不限') || text.contains('无限') || text == 'unlimited') {
+      return true;
+    }
+    final match = RegExp(r'([0-9]+(?:\.[0-9]+)?)').firstMatch(text);
+    return match != null && (double.tryParse(match.group(1)!) ?? 0) > 0;
+  }
+
+  bool get _canUseVpn =>
+      _appStatus.remainingSeconds > 0 && _hasTrafficAvailable;
 
   @override
   void initState() {
@@ -194,7 +210,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
               _status = VpnStatus.disconnected;
               if (wasConnected) {
                 _message = null;
-              } else if (wasConnecting && _message != null && _message!.contains('正在连接')) {
+              } else if (wasConnecting &&
+                  _message != null &&
+                  _message!.contains('正在连接')) {
                 _message = '连接失败，请重试';
               }
             });
@@ -223,13 +241,14 @@ class _VpnHomePageState extends State<VpnHomePage> {
     );
   }
 
-  Future<void> _loadAppData() async {
+  Future<bool> _loadAppData() async {
     final token = _session?.token;
+    var statusLoaded = false;
     try {
       final status = token == null || token.isEmpty
           ? await _appLoader.loadStatus()
           : await _appLoader.loadUserStatus(token);
-      if (!mounted) return;
+      if (!mounted) return statusLoaded;
       setState(() {
         _appStatus = status;
         _hasLoadedAppData = true;
@@ -237,21 +256,48 @@ class _VpnHomePageState extends State<VpnHomePage> {
       });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
+      statusLoaded = true;
     } on TokenExpiredException {
-      if (_isConnected) {
-        return;
-      }
       await _handleTokenExpired(expectedToken: token);
-      return;
-    } catch (_) {}
+      return false;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _message = _friendlyError(
+            error,
+            fallback: '无法获取账号状态，请检查网络后重试',
+          );
+        });
+      }
+    }
     try {
       final config = await _appLoader.loadConfig();
-      if (!mounted) return;
+      if (!mounted) return statusLoaded;
       setState(() {
         _appConfig = config;
       });
       unawaited(_checkAppVersion(config));
     } catch (_) {}
+    return statusLoaded;
+  }
+
+  String _friendlyError(Object error, {required String fallback}) {
+    var text = error.toString().trim();
+    text = text.replaceFirst(RegExp(r'^(Exception|Error):\s*'), '').trim();
+    final lower = text.toLowerCase();
+    if (lower.contains('socketexception') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('connection refused') ||
+        lower.contains('network is unreachable')) {
+      return '网络连接失败，请检查网络或防火墙后重试';
+    }
+    if (lower.contains('timeoutexception') || lower.contains('timed out')) {
+      return '请求超时，请检查网络后重试';
+    }
+    if (text.isEmpty || !RegExp(r'[\u4e00-\u9fff]').hasMatch(text)) {
+      return fallback;
+    }
+    return text;
   }
 
   /// Token 过期：清空本地 session，断开 VPN，提示用户重新登录
@@ -345,11 +391,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
       } else {
         throw UnsupportedError('当前平台暂不支持自动打开官网');
       }
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('打开官网失败：$error。请手动访问 $_updateWebsiteUrl'),
+        const SnackBar(
+          content: Text('打开官网失败，请稍后重试'),
           backgroundColor: const Color(0xFFE11D48),
           behavior: SnackBarBehavior.floating,
         ),
@@ -377,26 +423,27 @@ class _VpnHomePageState extends State<VpnHomePage> {
       } catch (_) {}
     }
 
-    if (_isConnected) {
-      if (mounted) {
-        setState(() {
-          _message = '登录状态异常，当前连接保持中';
-        });
-      }
-      return;
+    if (_isConnected || _isConnecting) {
+      _heartbeatTimer?.cancel();
+      _localUsageTimer?.cancel();
+      try {
+        await _vpnChannel.stopVpn();
+      } catch (_) {}
     }
 
     await _authService.clearSession();
     if (!mounted) return;
     setState(() {
       _session = null;
+      _status = VpnStatus.disconnected;
+      _connectedAt = null;
       _appStatus = const AppStatus(
         planLevel: '免费体验',
         remainingSeconds: 0,
         remainingTimeText: '未登录',
         trafficRemaining: '0 GB',
       );
-      _message = null;
+      _message = '当前设备登录已失效，请重新登录';
     });
     // 加载公开状态（不带 token）
     try {
@@ -438,10 +485,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
       });
       if (next <= 0) {
         _remainingTimer?.cancel();
-        if (_isConnected && !_hasActivePlan) {
-          setState(() {
-            _message = '试用已结束，当前连接保持中';
-          });
+        if (_isConnected) {
+          unawaited(_disconnect());
         }
       }
     });
@@ -489,17 +534,17 @@ class _VpnHomePageState extends State<VpnHomePage> {
       // 不再调用 _collectLocalUsage()，因为 collectHeartbeatTraffic 内部会调用 pollTrafficDelta
       await _usageReporter.collectHeartbeatTraffic(); // 收集流量但保持会话活跃
       await _usageReporter.flush(token); // 上报到服务器并清空缓存
-      
+
       // ✅ 上报成功后，重置所有计数器
       if (mounted) {
         setState(() {
           _pendingTrafficBytes = 0;
         });
       }
-      
+
       // ✅ 重置VPN底层的流量基线，避免重复统计
       await VpnNativeChannel.resetTrafficBaseline();
-      
+
       // 刷新用户状态，获取最新余额
       try {
         final status = await _appLoader.loadUserStatus(token);
@@ -507,6 +552,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
           setState(() {
             _appStatus = status;
           });
+          if (!_canUseVpn) {
+            await _disconnect();
+            if (mounted) {
+              setState(() => _message = '套餐已到期或流量已用完');
+            }
+          }
         }
       } catch (_) {}
     } catch (_) {}
@@ -570,8 +621,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
     final generation = ++_loadNodesGeneration;
     setState(() {
       _isLoadingNodes = true;
-      if (_message == '线路测速中，请稍候...' ||
-          _message == '请先加载并选择线路') {
+      if (_message == '线路测速中，请稍候...' || _message == '请先加载并选择线路') {
         _message = null;
       }
     });
@@ -586,8 +636,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         _nodes = sortedNodes;
         _selectedNode = sortedNodes.isNotEmpty ? sortedNodes.first : null;
         _isLoadingNodes = false;
-        if (_message == '线路测速中，请稍候...' ||
-            _message == '请先加载并选择线路') {
+        if (_message == '线路测速中，请稍候...' || _message == '请先加载并选择线路') {
           _message = null;
         }
       });
@@ -638,11 +687,28 @@ class _VpnHomePageState extends State<VpnHomePage> {
           _message = '线路已刷新';
         });
       }
-    } catch (error) {
+      if (mounted) {
+        setState(() => _message = '已刷新');
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('已刷新'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
+    } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _message = error.toString();
-      });
+      setState(() => _message = '刷新失败');
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('刷新失败'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
     } finally {
       if (!mounted) return;
       setState(() {
@@ -715,16 +781,20 @@ class _VpnHomePageState extends State<VpnHomePage> {
           _session = session;
         });
         _applySessionStatus(session);
-        await _loadAppData();
       }
 
       if (!mounted) return;
 
-      if (!_keepVpnConnected &&
-          (session.trialExpired || _appStatus.remainingSeconds <= 0) &&
-          !_hasActivePlan) {
+      final statusLoaded = await _loadAppData();
+      if (!mounted) return;
+      if (!statusLoaded) {
+        _showConnectBlockedTip('无法确认账号状态，请检查网络后重试');
+        return;
+      }
+
+      if (!_canUseVpn) {
         setState(() {
-          _message = '试用已结束，请购买套餐后连接';
+          _message = '套餐已到期或流量不足，请购买套餐后连接';
         });
         _openPurchasePage();
         return;
@@ -754,10 +824,11 @@ class _VpnHomePageState extends State<VpnHomePage> {
         final prepareResult = await _vpnChannel.prepareVpn();
         if (prepareResult != null) {
           if (!mounted) return;
-          setState(() {
-            _status = VpnStatus.disconnected;
-            _message = prepareResult;
-          });
+          setState(() => _status = VpnStatus.disconnected);
+          _showConnectBlockedTip(_friendlyError(
+            prepareResult,
+            fallback: 'VPN 权限申请失败，请检查系统权限后重试',
+          ));
           return;
         }
 
@@ -769,23 +840,32 @@ class _VpnHomePageState extends State<VpnHomePage> {
         final result = await _vpnChannel.startVpn(selectedNode);
         if (!mounted) return;
         if (result != null) {
-          setState(() {
-            _status = VpnStatus.disconnected;
-            _message = result;
-          });
+          setState(() => _status = VpnStatus.disconnected);
+          _showConnectBlockedTip(_friendlyError(
+            result,
+            fallback: 'VPN 连接失败，请切换线路后重试',
+          ));
         }
       } on PlatformException catch (error) {
         if (!mounted) return;
-        setState(() {
-          _status = VpnStatus.disconnected;
-          _message = error.message ?? 'VPN start failed';
-        });
+        setState(() => _status = VpnStatus.disconnected);
+        _showConnectBlockedTip(_friendlyError(
+          error.message ?? error.details ?? error,
+          fallback: 'VPN 启动失败，请关闭安全软件拦截后重试',
+        ));
       } on MissingPluginException {
         if (!mounted) return;
-        setState(() {
-          _status = VpnStatus.disconnected;
-          _message = '原生 VPN 通道未加载，请停止应用后重新运行安装';
-        });
+        setState(() => _status = VpnStatus.disconnected);
+        _showConnectBlockedTip(
+          'VPN 组件未完整安装，请退出应用后重新安装最新版',
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setState(() => _status = VpnStatus.disconnected);
+        _showConnectBlockedTip(_friendlyError(
+          error,
+          fallback: '连接失败，请切换线路或重启应用后重试',
+        ));
       }
     } finally {
       _connectInFlight = false;
@@ -870,7 +950,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (token == null || token.isEmpty) return;
 
     // 先断开 VPN
-    if (!_keepVpnConnected && (_isConnected || _isConnecting)) {
+    if (_isConnected || _isConnecting) {
       await _disconnect();
     }
 
@@ -928,6 +1008,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (token == null || token.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => LoginDevicesPage(token: token)),
+    );
+  }
+
+  void _openDiscoveriesPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const DiscoveriesPage()),
     );
   }
 
@@ -1076,16 +1162,16 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
         return '无限流量';
       }
-      
+
       // 简化逻辑：直接显示后端返回的值
       // 因为现在有心跳定时器（每60秒），后端数据会及时更新
       // 只对未上报的流量（最多60秒内的）进行乐观更新
       if (!_isConnected) return text;
-      
+
       // 只显示当前未消费的流量增量（秒级更新）
       final unconsumedBytes = VpnNativeChannel.unconsumedBytes;
       if (unconsumedBytes <= 0) return text;
-      
+
       // 乐观更新：减去实时流量增量（不包括已累积的 _pendingTrafficBytes）
       return _calculateOptimisticTraffic(text, unconsumedBytes);
     } catch (_) {
@@ -1104,6 +1190,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
         onChatGptPressed: _openChatGptPage,
         onLoginPressed: _openAuthPage,
         onDevicesPressed: _openLoginDevicesPage,
+        onDiscoverPressed: _openDiscoveriesPage,
         onInvitePressed: _openInviteRewardPage,
         onLogoutPressed: _logoutCurrentDevice,
         onNoticesPressed: _openNoticesPage,
@@ -1219,13 +1306,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
               if (_hasLoadedAppData &&
                   _session != null &&
                   _appStatusToken == _session!.token &&
-                  _appStatus.remainingSeconds <= 0 &&
-                  !_hasActivePlan)
+                  !_canUseVpn)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                   child: SizedBox(
                     width: double.infinity,
-                    height: 60,
+                    height: 76,
                     child: FilledButton.icon(
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFE11D48),
@@ -1233,13 +1319,17 @@ class _VpnHomePageState extends State<VpnHomePage> {
                         textStyle: const TextStyle(
                             fontSize: 18, fontWeight: FontWeight.w700),
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 28, vertical: 16),
+                            horizontal: 28, vertical: 10),
                         shadowColor: const Color(0xFFE11D48).withOpacity(0.4),
                         elevation: 6,
                       ),
                       onPressed: _openPurchasePage,
                       icon: const Icon(Icons.rocket_launch_rounded, size: 22),
-                      label: const Text('试用已结束，去购买套餐'),
+                      label: const Text(
+                        '套餐已到期或流量不足\n去购买套餐',
+                        maxLines: 2,
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ),
                 ),

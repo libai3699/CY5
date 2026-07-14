@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { getUserList, createUser, updateUser, deleteUser, addUserDuration, type User } from '#/api/admin/users';
 
@@ -8,6 +8,7 @@ const list = ref<User[]>([]);
 const total = ref(0);
 const keyword = ref('');
 const page = reactive({ current: 1, size: 20 });
+let refreshTimer: number | undefined;
 
 const dialogVisible = ref(false);
 const isEdit = ref(false);
@@ -93,7 +94,16 @@ async function handleToggle(row: User) {
 }
 
 async function handleDelete(row: User) {
-  await ElMessageBox.confirm(`确定删除用户 ${row.username}？`, '提示', { type: 'warning' });
+  await ElMessageBox.confirm(
+    `确定永久删除用户“${row.username}”？删除后该用户所有设备会立即退出登录，此操作不可恢复。`,
+    '删除用户',
+    {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      confirmButtonClass: 'el-button--danger',
+    },
+  );
   await deleteUser(row.id);
   ElMessage.success('删除成功');
   load();
@@ -122,9 +132,11 @@ async function handleAddDuration() {
 
 const fmtSec = (s: number) => `${Math.floor(s / 60)} 分钟`;
 const fmtTime = (t: string) => {
-  if (!t) return '';
+  if (!t) return '-';
   const d = new Date(t);
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  if (Number.isNaN(d.getTime())) return t;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 };
 
 // 剩余时长
@@ -148,7 +160,14 @@ function fmtTraffic(usedBytes: number, limitBytes: number | null): string {
   return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(left / 1024 / 1024).toFixed(1)} MB`;
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  refreshTimer = window.setInterval(load, 30_000);
+});
+
+onUnmounted(() => {
+  if (refreshTimer !== undefined) window.clearInterval(refreshTimer);
+});
 </script>
 
 <template>
@@ -199,6 +218,16 @@ onMounted(load);
             <el-tag :type="row.status === 1 ? 'success' : 'danger'">{{ row.status === 1 ? '正常' : '禁用' }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="在线状态" width="110" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.is_online ? 'success' : 'info'" effect="dark">
+              {{ row.is_online ? `在线 ${row.online_devices} 台` : '离线' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="最后在线" width="170">
+          <template #default="{ row }">{{ row.last_active_at ? fmtTime(row.last_active_at) : '-' }}</template>
+        </el-table-column>
         <el-table-column prop="created_at" label="注册时间" width="170">
           <template #default="{ row }">{{ fmtTime(row.created_at) }}</template>
         </el-table-column>
@@ -212,14 +241,14 @@ onMounted(load);
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="350" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="primary" @click="openAddDuration(row)">追加时长</el-button>
             <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" @click="handleToggle(row)">
               {{ row.status === 1 ? '禁用' : '启用' }}
             </el-button>
-            <!-- <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button> -->
+            <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

@@ -108,6 +108,14 @@ func UploadFile(c *gin.Context) {
 }
 
 func UploadPaymentImage(c *gin.Context) {
+	uploadImage(c, "payment", "payment")
+}
+
+func UploadDiscoveryImage(c *gin.Context) {
+	uploadImage(c, "discovery", "discovery")
+}
+
+func uploadImage(c *gin.Context, directory string, prefix string) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImageSize)
 
 	file, header, err := c.Request.FormFile("file")
@@ -129,19 +137,19 @@ func UploadPaymentImage(c *gin.Context) {
 		return
 	}
 
-	if err := os.MkdirAll(filepath.Join("uploads", "payment"), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Join("uploads", directory), 0755); err != nil {
 		handler.Fail(c, 500, "create upload directory failed")
 		return
 	}
 
-	fileName := fmt.Sprintf("payment_%d%s", time.Now().UnixNano(), ext)
-	savePath := filepath.Join("uploads", "payment", fileName)
+	fileName := fmt.Sprintf("%s_%d%s", prefix, time.Now().UnixNano(), ext)
+	savePath := filepath.Join("uploads", directory, fileName)
 	if err := c.SaveUploadedFile(header, savePath); err != nil {
 		handler.Fail(c, 500, "image save failed: "+err.Error())
 		return
 	}
 
-	handler.OK(c, gin.H{"url": absoluteUploadURL(c, "/uploads/payment/" + fileName)})
+	handler.OK(c, gin.H{"url": absoluteUploadURL(c, "/uploads/"+directory+"/"+fileName)})
 }
 
 func absoluteUploadURL(c *gin.Context, value string) string {

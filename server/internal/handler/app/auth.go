@@ -128,9 +128,10 @@ func Register(c *gin.Context) {
 }
 
 type loginReq struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	DeviceID string `json:"device_id"`
+	Username   string `json:"username" binding:"required"`
+	Password   string `json:"password" binding:"required"`
+	DeviceID   string `json:"device_id"`
+	ForceLogin bool   `json:"force_login"`
 }
 
 func Login(c *gin.Context) {
@@ -161,9 +162,22 @@ func Login(c *gin.Context) {
 	now := time.Now()
 	updates := map[string]interface{}{"last_login_at": now}
 	if req.DeviceID != "" {
-		if !canLoginDevice(user, req.DeviceID) {
-			handler.Fail(c, 1005, "登录设备数量已达当前套餐上限，请先移除其他设备")
-			return
+		maxDevices := loginDeviceLimit(user)
+		loggedInCount, alreadyLoggedIn := loginDeviceStatus(user.ID, req.DeviceID)
+		if !alreadyLoggedIn && loggedInCount >= int64(maxDevices) {
+			if !req.ForceLogin {
+				handler.FailData(c, 1005, "登录设备已达套餐上限", gin.H{
+					"max_devices":       maxDevices,
+					"logged_in_devices": loggedInCount,
+				})
+				return
+			}
+			if err := logoutExcessDevices(user.ID, req.DeviceID, maxDevices-1); err != nil {
+				fmt.Printf("[AUTH_BIND] force logout failed user_id=%d device_id=%s err=%v\n",
+					user.ID, req.DeviceID, err)
+				handler.Fail(c, 500, "自动退出其他设备失败，请稍后重试")
+				return
+			}
 		}
 		updates["device_id"] = req.DeviceID
 	}
@@ -244,16 +258,7 @@ func bindDeviceToUser(deviceID string, userID uint64) error {
 	return nil
 }
 
-func canLoginDevice(user model.User, deviceID string) bool {
-	var bound model.Device
-	if err := database.DB.Where("device_id = ? AND user_id = ?", deviceID, user.ID).First(&bound).Error; err == nil {
-		return true
-	}
-
-	if user.DeviceID == deviceID {
-		return true
-	}
-
+func loginDeviceLimit(user model.User) int {
 	maxDevices := 1
 	if user.PlanExpiredAt != nil && user.PlanExpiredAt.After(time.Now()) {
 		if user.CurrentPlanID != nil {
@@ -263,16 +268,39 @@ func canLoginDevice(user model.User, deviceID string) bool {
 			}
 		}
 	}
+	return maxDevices
+}
 
+func loginDeviceStatus(userID uint64, deviceID string) (int64, bool) {
 	var count int64
-	database.DB.Model(&model.Device{}).Where("user_id = ?", user.ID).Count(&count)
-	if count >= int64(maxDevices) {
-		var oldest model.Device
-		if err := database.DB.Where("user_id = ?", user.ID).Order("updated_at asc").First(&oldest).Error; err == nil {
-			database.DB.Delete(&oldest)
-		}
+	database.DB.Model(&model.Device{}).Where("user_id = ?", userID).Count(&count)
+	var currentCount int64
+	database.DB.Model(&model.Device{}).
+		Where("user_id = ? AND device_id = ?", userID, deviceID).
+		Count(&currentCount)
+	return count, currentCount > 0
+}
+
+func logoutExcessDevices(userID uint64, currentDeviceID string, keepCount int) error {
+	var devices []model.Device
+	if err := database.DB.Where("user_id = ? AND device_id <> ?", userID, currentDeviceID).
+		Order("last_seen_at desc, updated_at desc").
+		Find(&devices).Error; err != nil {
+		return err
 	}
-	return true
+	if keepCount < 0 {
+		keepCount = 0
+	}
+	if len(devices) <= keepCount {
+		return nil
+	}
+	ids := make([]uint64, 0, len(devices)-keepCount)
+	for _, device := range devices[keepCount:] {
+		ids = append(ids, device.ID)
+	}
+	return database.DB.Model(&model.Device{}).
+		Where("id IN ? AND user_id = ?", ids, userID).
+		Update("user_id", nil).Error
 }
 
 func safeUser(u model.User) gin.H {

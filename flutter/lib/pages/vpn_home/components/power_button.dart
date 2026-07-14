@@ -20,7 +20,8 @@ class PowerButton extends StatefulWidget {
   State<PowerButton> createState() => _PowerButtonState();
 }
 
-class _PowerButtonState extends State<PowerButton> with SingleTickerProviderStateMixin {
+class _PowerButtonState extends State<PowerButton>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 3),
@@ -40,11 +41,7 @@ class _PowerButtonState extends State<PowerButton> with SingleTickerProviderStat
         final scale = widget.connected || widget.busy
             ? 1 + math.sin(_controller.value * math.pi * 2) * 0.035
             : 1.0;
-
-        return Transform.scale(
-          scale: scale,
-          child: child,
-        );
+        return Transform.scale(scale: scale, child: child);
       },
       child: SizedBox(
         width: widget.compact ? 170 : 210,
@@ -63,7 +60,8 @@ class _PowerButtonState extends State<PowerButton> with SingleTickerProviderStat
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFE11D48).withOpacity(widget.connected ? 0.42 : 0.24),
+                color: const Color(0xFFE11D48)
+                    .withOpacity(widget.connected ? 0.42 : 0.24),
                 blurRadius: widget.connected ? 34 : 22,
                 offset: const Offset(0, 16),
               ),
@@ -76,7 +74,9 @@ class _PowerButtonState extends State<PowerButton> with SingleTickerProviderStat
               customBorder: const CircleBorder(),
               onTap: widget.busy ? null : widget.onPressed,
               child: Icon(
-                widget.connected ? Icons.power_settings_new_rounded : Icons.bolt_rounded,
+                widget.connected
+                    ? Icons.power_settings_new_rounded
+                    : Icons.bolt_rounded,
                 color: Colors.white,
                 size: widget.compact ? 70 : 86,
               ),

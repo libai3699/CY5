@@ -37,8 +37,8 @@ func CreatePaymentOrder(c *gin.Context) {
 		handler.Fail(c, 400, "参数错误")
 		return
 	}
-	if req.PayType != "alipay" && req.PayType != "wxpay" {
-		handler.Fail(c, 400, "仅支持支付宝或微信支付")
+	if req.PayType != "alipay" && req.PayType != "wxpay" && req.PayType != "qqpay" {
+		handler.Fail(c, 400, "仅支持支付宝、微信或QQ支付")
 		return
 	}
 

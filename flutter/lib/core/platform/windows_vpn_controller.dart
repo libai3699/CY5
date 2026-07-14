@@ -194,8 +194,9 @@ class WindowsVpnController {
 
       final proxyProbe = await _probeProxyExit();
       if (!proxyProbe.success) {
-        await stop();
-        throw Exception(proxyProbe.message);
+        // 公网 IP 服务可能被运营商、防火墙或限流阻断。此探测仅用于诊断，
+        // 本地核心端口和系统代理已分别验证，不应因此中断可用连接。
+        print('[VPN PROBE] warning: ${proxyProbe.message}');
       }
 
       _startStatsPolling();
@@ -203,7 +204,10 @@ class WindowsVpnController {
       return true;
     } catch (e) {
       print('WindowsVpnController Error: $e');
-      _lastErrorMessage = e.toString();
+      _lastErrorMessage = e
+          .toString()
+          .replaceFirst(RegExp(r'^(Exception|Error):\s*'), '')
+          .trim();
       await _setSystemProxy(false);
       return false;
     }

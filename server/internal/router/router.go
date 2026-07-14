@@ -24,6 +24,7 @@ func Setup(r *gin.Engine) {
 		publicGroup.GET("/notices", app.GetNotices)
 		publicGroup.GET("/plans", app.GetPlans)
 		publicGroup.GET("/quote", app.GetRandomQuote)
+		publicGroup.GET("/discoveries", app.ListDiscoveryItems)
 		publicGroup.GET("/payment-configs", app.GetPaymentConfigs)
 		publicGroup.POST("/payment/orders", middleware.IPRateLimit("payment_order_create", 10, time.Minute), middleware.AuthRequired(), app.CreatePaymentOrder)
 		publicGroup.GET("/payment/orders/:order_no", middleware.AuthRequired(), app.GetPaymentOrder)
@@ -56,6 +57,7 @@ func Setup(r *gin.Engine) {
 		appGroup.GET("/notices", app.GetNotices)
 		appGroup.GET("/plans", app.GetPlans)
 		appGroup.GET("/quote", app.GetRandomQuote)
+		appGroup.GET("/discoveries", app.ListDiscoveryItems)
 		appGroup.GET("/payment-configs", app.GetPaymentConfigs)
 
 		// 需要签名（设备接口）
@@ -140,6 +142,7 @@ func Setup(r *gin.Engine) {
 			authGroup.GET("/files", admin.ListFiles)
 			authGroup.POST("/files/upload", middleware.AdminRequireRole("super_admin"), admin.UploadFile)
 			authGroup.POST("/files/payment-image", middleware.AdminRequireRole("super_admin"), admin.UploadPaymentImage)
+			authGroup.POST("/files/discovery-image", middleware.AdminRequireRole("super_admin"), admin.UploadDiscoveryImage)
 			authGroup.DELETE("/files/:key", middleware.AdminRequireRole("super_admin"), admin.DeleteFile)
 
 			// 埋点统计
@@ -153,6 +156,12 @@ func Setup(r *gin.Engine) {
 			authGroup.POST("/quotes", middleware.AdminRequireRole("super_admin"), admin.CreateQuote)
 			authGroup.PUT("/quotes/:id", middleware.AdminRequireRole("super_admin"), admin.UpdateQuote)
 			authGroup.DELETE("/quotes/:id", middleware.AdminRequireRole("super_admin"), admin.DeleteQuote)
+
+			// 发现宝藏管理
+			authGroup.GET("/discoveries", admin.ListDiscoveryItems)
+			authGroup.POST("/discoveries", middleware.AdminRequireRole("super_admin"), admin.CreateDiscoveryItem)
+			authGroup.PUT("/discoveries/:id", middleware.AdminRequireRole("super_admin"), admin.UpdateDiscoveryItem)
+			authGroup.DELETE("/discoveries/:id", middleware.AdminRequireRole("super_admin"), admin.DeleteDiscoveryItem)
 
 			// 支付配置管理
 			authGroup.GET("/payment-configs", admin.ListPaymentConfigs)

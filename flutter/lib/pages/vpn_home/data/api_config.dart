@@ -15,6 +15,7 @@ const String kAppConfigApiUrl = '$kApiBaseUrl/api/public/config?plain=1';
 const String kNoticesApiUrl = '$kApiBaseUrl/api/public/notices';
 const String kPlansApiUrl = '$kApiBaseUrl/api/public/plans';
 const String kQuoteApiUrl = '$kApiBaseUrl/api/public/quote';
+const String kDiscoveriesApiUrl = '$kApiBaseUrl/api/public/discoveries';
 const String kPaymentConfigsApiUrl = '$kApiBaseUrl/api/public/payment-configs';
 const String kPaymentOrdersApiUrl = '$kApiBaseUrl/api/public/payment/orders';
 const String kContactApiUrl = '$kApiBaseUrl/api/public/contact';
@@ -28,6 +29,6 @@ const String kMarkNoticeReadUrl =
 const String kMarkAllReadUrl = '$kApiBaseUrl/api/app/user/notices/read-all';
 const String kTrackEventUrl = '$kApiBaseUrl/api/public/track';
 
-const String kAppVersion = '0.1.3';
+const String kAppVersion = '0.1.4';
 
 const String kFlavor = String.fromEnvironment('FLAVOR', defaultValue: 'vpn');

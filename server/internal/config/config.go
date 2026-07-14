@@ -54,7 +54,7 @@ type Config struct {
 	MinIOBucket    string
 	MinIOUseSSL    string
 
-	// 易支付（支付宝/微信聚合支付）
+	// 易支付（支付宝/微信/QQ 聚合支付）
 	EPayGatewayURL string
 	EPayPID        string
 	EPayKey        string

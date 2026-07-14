@@ -12,6 +12,7 @@ Set-Location $projectRoot
 $expectedFlutterVersion = '3.27.0'
 $preferredFlutter = Join-Path $projectRoot ".fvm\versions\$expectedFlutterVersion\bin\flutter.bat"
 $linkedFlutter = Join-Path $projectRoot '.fvm\flutter_sdk\bin\flutter.bat'
+$userFvmFlutter = Join-Path $env:USERPROFILE "fvm\versions\$expectedFlutterVersion\bin\flutter.bat"
 $installerScript = Join-Path $projectRoot 'windows_installer.iss'
 $appPublisher = '9.9 Company, Inc.'
 $appUrl = 'https://jsq.wangwei.tech/'
@@ -25,6 +26,10 @@ function Get-FlutterCommand {
         return $linkedFlutter
     }
 
+    if (Test-Path $userFvmFlutter) {
+        return $userFvmFlutter
+    }
+
     $globalFlutter = Get-Command flutter -ErrorAction SilentlyContinue
     if ($null -ne $globalFlutter) {
         return $globalFlutter.Source
@@ -34,9 +39,39 @@ function Get-FlutterCommand {
 }
 
 function Get-InnoCompiler {
-    $envCompiler = [Environment]::GetEnvironmentVariable('ISCC_PATH')
-    if (-not [string]::IsNullOrWhiteSpace($envCompiler) -and (Test-Path $envCompiler -PathType Leaf)) {
-        return (Resolve-Path $envCompiler).Path
+    function Resolve-InnoPath {
+        param(
+            [Parameter(Mandatory = $false)]
+            [AllowNull()]
+            [AllowEmptyString()]
+            [string]$Path
+        )
+
+        if ([string]::IsNullOrWhiteSpace($Path)) {
+            return $null
+        }
+
+        $candidate = $Path.Trim('"', ' ', "`t")
+        if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+            $candidate = Join-Path $projectRoot $candidate
+        }
+
+        $resolved = Resolve-Path $candidate -ErrorAction SilentlyContinue
+        if ($null -ne $resolved -and (Test-Path $resolved.Path -PathType Leaf)) {
+            return $resolved.Path
+        }
+        return $null
+    }
+
+    $envCompiler = [Environment]::GetEnvironmentVariable('INNO_SETUP_PATH')
+    if ([string]::IsNullOrWhiteSpace($envCompiler)) {
+        $envCompiler = [Environment]::GetEnvironmentVariable('ISCC_PATH')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($envCompiler)) {
+        $resolved = Resolve-InnoPath -Path $envCompiler
+        if ($null -ne $resolved) {
+            return $resolved
+        }
     }
 
     $globalCompiler = Get-Command ISCC.exe -ErrorAction SilentlyContinue
@@ -44,21 +79,58 @@ function Get-InnoCompiler {
         return $globalCompiler.Source
     }
 
-    $candidates = @(
-        'D:\Inno Setup 6\ISCC.exe',
-        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
-        'C:\Program Files\Inno Setup 6\ISCC.exe',
-        'C:\Program Files (x86)\Inno Setup 5\ISCC.exe',
-        'C:\Program Files\Inno Setup 5\ISCC.exe'
+    $registryPaths = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 6_is1',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 5_is1',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Inno Setup 5_is1'
     )
 
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate -PathType Leaf) {
-            return $candidate
+    foreach ($reg in $registryPaths) {
+        if (Test-Path $reg) {
+            $installDir = (Get-ItemProperty -Path $reg -ErrorAction SilentlyContinue).InstallLocation
+            if (-not [string]::IsNullOrWhiteSpace($installDir)) {
+                $resolved = Resolve-InnoPath -Path (Join-Path $installDir 'ISCC.exe')
+                if ($null -ne $resolved) {
+                    return $resolved
+                }
+            }
         }
     }
 
-    throw 'ISCC.exe was not found. Install Inno Setup or set ISCC_PATH.'
+    $candidateRoots = @(
+        ${env:ProgramFiles},
+        ${env:ProgramFiles(x86)}
+    )
+
+    $candidates = @()
+    foreach ($root in $candidateRoots) {
+        if ([string]::IsNullOrWhiteSpace($root)) {
+            continue
+        }
+
+        if (Test-Path $root) {
+            Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like 'Inno Setup*' } |
+                ForEach-Object { $candidates += Join-Path $_.FullName 'ISCC.exe' }
+        }
+    }
+
+    $candidates += @(
+        'C:\Program Files\Inno Setup 6\ISCC.exe',
+        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+        'C:\Program Files\Inno Setup 5\ISCC.exe',
+        'C:\Program Files (x86)\Inno Setup 5\ISCC.exe'
+    )
+
+    foreach ($candidate in $candidates) {
+        $resolved = Resolve-InnoPath -Path $candidate
+        if ($null -ne $resolved) {
+            return $resolved
+        }
+    }
+
+    throw 'ISCC.exe was not found. Install Inno Setup or set ISCC_PATH/INNO_SETUP_PATH.'
 }
 
 function Invoke-Flutter {
@@ -360,7 +432,7 @@ function Build-WindowsArtifact {
     if (-not [string]::IsNullOrWhiteSpace($CoreBinary) -and (Test-Path $CoreBinary -PathType Leaf)) {
         Copy-Item -Path $CoreBinary -Destination (Join-Path $stageDir (Split-Path $CoreBinary -Leaf)) -Force
     } else {
-        Write-Warning 'xray.exe or v2ray.exe was not found. The Windows installer will not include the core binary.'
+        throw 'xray.exe or v2ray.exe was not found. Refusing to create a Windows installer that cannot connect.'
     }
 
     if (-not (Test-Path $installerScript -PathType Leaf)) {
@@ -387,6 +459,13 @@ function Build-WindowsArtifact {
 }
 
 $script:flutterCommand = Get-FlutterCommand
+$script:flutterSdkRoot = Split-Path -Parent (Split-Path -Parent $script:flutterCommand)
+$env:FLUTTER_ROOT = $script:flutterSdkRoot
+$env:PATH = @(
+    (Join-Path $script:flutterSdkRoot 'bin'),
+    (Join-Path $script:flutterSdkRoot 'bin\cache\dart-sdk\bin'),
+    $env:PATH
+) -join ';'
 $script:innoCompiler = Get-InnoCompiler
 $flutterVersionInfo = & $script:flutterCommand --version --machine | ConvertFrom-Json
 if ($flutterVersionInfo.frameworkVersion -ne $expectedFlutterVersion) {

@@ -76,6 +76,12 @@ const routes: RouteRecordRaw[] = [
         meta: { icon: 'carbon:quotes', title: '精选语录' },
       },
       {
+        name: 'ContentDiscoveriesPage',
+        path: '/content/discoveries',
+        component: () => import('#/views/content/ContentDiscoveriesPage.vue'),
+        meta: { icon: 'carbon:compass', title: '发现宝藏' },
+      },
+      {
         name: 'ContentPaymentsPage',
         path: '/content/payments',
         component: () => import('#/views/content/ContentPaymentsPage.vue'),
@@ -93,6 +99,7 @@ const routes: RouteRecordRaw[] = [
     meta: { icon: 'carbon:document', order: 5, title: '日志管理' },
     name: 'LogMgmt',
     path: '/logs',
+    redirect: '/logs/user',
     children: [
       {
         name: 'LogUserPage',

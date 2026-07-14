@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"cy5vpn/server/internal/config"
 	"cy5vpn/server/internal/database"
@@ -60,6 +61,19 @@ func AuthRequired() gin.HandlerFunc {
 			if count == 0 {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": 401, "message": "设备已退出，请重新登录"})
 				return
+			}
+
+			// 任一已登录接口请求都视为设备仍在线。客户端空闲时每分钟刷新
+			// 状态，VPN 连接期间也会持续心跳，因此无需额外维护长连接。
+			now := time.Now()
+			if err := database.DB.Model(&model.Device{}).
+				Where("device_id = ? AND user_id = ?", claims.DeviceID, claims.UserID).
+				Updates(map[string]interface{}{
+					"last_seen_at": now,
+					"last_ip":      c.ClientIP(),
+				}).Error; err != nil {
+				fmt.Printf("[AUTH_MW] update presence failed user_id=%d device_id=%s err=%v\n",
+					claims.UserID, claims.DeviceID, err)
 			}
 		}
 

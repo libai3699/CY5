@@ -92,6 +92,12 @@ export async function getAllMenusApi(): Promise<RouteRecordStringComponent[]> {
           meta: { icon: 'carbon:quotes', title: '精选语录' },
         },
         {
+          name: 'ContentDiscoveriesPage',
+          path: '/content/discoveries',
+          component: '../views/content/ContentDiscoveriesPage.vue',
+          meta: { icon: 'carbon:compass', title: '发现宝藏' },
+        },
+        {
           name: 'ContentPaymentsPage',
           path: '/content/payments',
           component: '../views/content/ContentPaymentsPage.vue',

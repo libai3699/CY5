@@ -88,7 +88,13 @@ async function handleAddDuration() {
 }
 
 const fmtSec = (s: number) => `${Math.floor(s / 60)} 分钟`;
-const fmtTime = (v?: string | null) => v ? new Date(v).toLocaleString('zh-CN', { hour12: false }) : '-';
+const fmtTime = (value?: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
 const fmtRemaining = (expiredAt?: string | null) => {
   if (!expiredAt) return '未开通';
   const sec = Math.max(0, Math.floor((new Date(expiredAt).getTime() - Date.now()) / 1000));

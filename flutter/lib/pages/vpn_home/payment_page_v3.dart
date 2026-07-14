@@ -36,18 +36,22 @@ class PaymentPageV3 extends StatefulWidget {
 }
 
 class _PaymentPageV3State extends State<PaymentPageV3> {
-  String _selectedChannel = 'usdt'; // usdt, wechat, alipay
+  String _selectedChannel = 'alipay'; // alipay, wechat, qq
+  String _paymentMode = 'auto'; // auto, manual
+  String _selectedManualChannel = 'alipay'; // usdt, wechat, alipay, qq
   String _selectedUsdtNetwork = 'bep20'; // trc20, bep20, erc20
 
   List<_PaymentConfig> _usdtConfigs = [];
   List<_PaymentConfig> _wechatConfigs = [];
   List<_PaymentConfig> _alipayConfigs = [];
+  List<_PaymentConfig> _qqConfigs = [];
 
   bool _loading = true;
   String? _error;
   double _usdtRate = 7.2;
   String? _orderNo;
   bool _creatingPayment = false;
+  final Set<String> _savedManualQrUrls = <String>{};
 
   // 仅用于界面展示；实际支付金额始终由服务端按套餐计算。
   late final double _paymentAmount;
@@ -122,6 +126,26 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                 .toList();
             _wechatConfigs = configs.where((c) => c.type == 'wechat').toList();
             _alipayConfigs = configs.where((c) => c.type == 'alipay').toList();
+            _qqConfigs = configs.where((c) => c.type == 'qq').toList();
+
+            if (_loggedIn) {
+              _selectedChannel = 'alipay';
+            } else if (_usdtConfigs.isNotEmpty) {
+              final network = _usdtConfigs.first.type.replaceFirst('usdt_', '');
+              if (network.isNotEmpty) _selectedUsdtNetwork = network;
+            }
+
+            if (_alipayConfigs.isNotEmpty) {
+              _selectedManualChannel = 'alipay';
+            } else if (_wechatConfigs.isNotEmpty) {
+              _selectedManualChannel = 'wechat';
+            } else if (_qqConfigs.isNotEmpty) {
+              _selectedManualChannel = 'qq';
+            } else if (_usdtConfigs.isNotEmpty) {
+              _selectedManualChannel = 'usdt';
+            }
+
+            _paymentMode = _loggedIn ? 'auto' : 'manual';
             _loading = false;
           });
         }
@@ -147,7 +171,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       );
       return;
     }
-    if (_selectedChannel != 'alipay' && _selectedChannel != 'wechat') {
+    if (_selectedChannel != 'alipay' &&
+        _selectedChannel != 'wechat' &&
+        _selectedChannel != 'qq') {
       _openContact();
       return;
     }
@@ -161,7 +187,11 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       request.write(jsonEncode({
         'plan_id': widget.planId,
         'billing_cycle': widget.billingCycle,
-        'pay_type': _selectedChannel == 'wechat' ? 'wxpay' : 'alipay',
+        'pay_type': switch (_selectedChannel) {
+          'wechat' => 'wxpay',
+          'qq' => 'qqpay',
+          _ => 'alipay',
+        },
       }));
       final response = await request.close();
       final body = await response.transform(utf8.decoder).join();
@@ -184,11 +214,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       );
       if (!opened) throw Exception('无法打开支付页面');
       if (mounted) await _showPaymentResultDialog();
-    } catch (error) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(error.toString().replaceFirst('Exception: ', '')),
+          const SnackBar(
+            content: Text(
+                '\u652f\u4ed8\u64cd\u4f5c\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5'),
           ),
         );
       }
@@ -295,10 +326,11 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
           duration: const Duration(seconds: 3),
         ),
       );
-    } catch (error) {
+    } catch (_) {
       messenger.showSnackBar(
-        SnackBar(
-          content: Text('保存失败：$error'),
+        const SnackBar(
+          content: Text(
+              '\u4e8c\u7ef4\u7801\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u5b58\u50a8\u6743\u9650'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -311,8 +343,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('保存到相册'),
-            content: const Text('二维码将保存到系统相册。首次保存时，旧版 Android 可能会请求存储权限。'),
+            title: const Text('保存二维码到相册'),
+            content: const Text(
+              '即将把二维码保存到系统相册，部分安卓设备可能需要手动授权相册权限。',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -334,6 +368,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     final result = await GallerySaver.saveQrCodeFromUrl(imageUrl);
     if (!mounted) {
       return;
+    }
+    if (result.success) {
+      setState(() => _savedManualQrUrls.add(imageUrl));
     }
 
     messenger.showSnackBar(
@@ -371,7 +408,8 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     return null;
   }
 
-  String? get _selectedPreviewImageUrl => _selectedPreviewConfig?.qrCode;
+  String? get _selectedPreviewImageUrl =>
+      _selectedChannel == 'usdt' ? _selectedPreviewConfig?.qrCode : null;
 
   String get _selectedPreviewTitle {
     final config = _selectedPreviewConfig;
@@ -443,212 +481,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       return _buildWindowsBody();
     }
 
-    return Column(
-      children: [
-        // 订单信息卡片
-        Container(
-          margin: const EdgeInsets.all(18),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.85),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '订单信息',
-                style: TextStyle(
-                  color: Color(0xFF881337),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              _buildInfoRow('套餐', widget.planName),
-              _buildInfoRow('周期', widget.cycle),
-              const Divider(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '应付金额',
-                    style: TextStyle(
-                      color: Color(0xFF881337),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '¥${_paymentAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: Color(0xFFE11D48),
-                          fontSize: 26,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        '≈ ${_usdtAmount.toStringAsFixed(2)} USDT',
-                        style: TextStyle(
-                          color: const Color(0xFF9F1239).withOpacity(0.7),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        '金额含随机小数，用于识别您的付款',
-                        style: TextStyle(
-                          color: const Color(0xFF9F1239).withOpacity(0.5),
-                          fontSize: 10,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        '付款时请备注好登录账号，方便到账审核',
-                        style: TextStyle(
-                          color: Color(0xFFE11D48),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-
-        // 支付方式选择
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-            children: [
-              const Text(
-                '选择支付方式',
-                style: TextStyle(
-                  color: Color(0xFF881337),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // 三个支付方式横向排列
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildChannelCard(
-                      'usdt',
-                      'USDT',
-                      'assets/images/contact/USDT.png',
-                      _usdtConfigs.isNotEmpty,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildChannelCard(
-                      'wechat',
-                      '微信支付',
-                      'assets/images/contact/wechat.png',
-                      _wechatConfigs.isNotEmpty,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildChannelCard(
-                      'alipay',
-                      '支付宝',
-                      'assets/images/contact/alipay.png',
-                      _alipayConfigs.isNotEmpty,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-
-              // USDT 网络选择和收款信息
-              if (_selectedChannel == 'usdt' && _usdtConfigs.isNotEmpty) ...[
-                const Text(
-                  '选择网络',
-                  style: TextStyle(
-                    color: Color(0xFF881337),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildNetworkChip('trc20', 'TRC20'),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildNetworkChip('bep20', 'BEP20'),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildNetworkChip('erc20', 'ERC20'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _buildPaymentInfo(),
-              ],
-
-              // 微信/支付宝收款信息
-              if (_selectedChannel == 'wechat' && _wechatConfigs.isNotEmpty)
-                _buildWechatAlipayInfo(_wechatConfigs.first),
-
-              if (_selectedChannel == 'alipay' && _alipayConfigs.isNotEmpty)
-                _buildWechatAlipayInfo(_alipayConfigs.first),
-            ],
-          ),
-        ),
-
-        // 底部按钮
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 0, 18, 20),
-          child: Column(
-            children: [
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _creatingPayment
-                      ? null
-                      : (_selectedChannel == 'usdt'
-                          ? _openContact
-                          : _orderNo == null
-                              ? _startOnlinePayment
-                              : _checkAndShowStatus),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFE11D48),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    _creatingPayment
-                        ? '正在创建订单...'
-                        : _selectedChannel == 'usdt'
-                            ? '完成支付后联系客服'
-                            : _orderNo == null
-                                ? '前往在线支付'
-                                : '检查订单状态',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    return _buildMobilePaymentFlowV4();
   }
 
   Widget _buildWindowsBody() {
@@ -675,6 +508,13 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   }
 
   String get _selectedPreviewTitleClean {
+    if (_selectedChannel != 'usdt') {
+      return switch (_selectedChannel) {
+        'wechat' => '\u5fae\u4fe1\u5728\u7ebf\u6536\u94f6\u53f0',
+        'qq' => 'QQ \u5728\u7ebf\u6536\u94f6\u53f0',
+        _ => '\u652f\u4ed8\u5b9d\u5728\u7ebf\u6536\u94f6\u53f0',
+      };
+    }
     final config = _selectedPreviewConfig;
     if (config != null && config.label.isNotEmpty) {
       return '${config.label}\u4e8c\u7ef4\u7801';
@@ -729,29 +569,23 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      Text(
-                        '~ ${_usdtAmount.toStringAsFixed(2)} USDT',
-                        style: TextStyle(
-                          color: const Color(0xFF9F1239).withOpacity(0.7),
-                          fontSize: 12,
+                      if (_selectedChannel == 'usdt')
+                        Text(
+                          '~ ${_usdtAmount.toStringAsFixed(2)} USDT',
+                          style: TextStyle(
+                            color: const Color(0xFF9F1239).withOpacity(0.7),
+                            fontSize: 12,
+                          ),
+                        )
+                      else
+                        const Text(
+                          '\u5b9e\u9645\u91d1\u989d\u4ee5\u6536\u94f6\u53f0\u8ba2\u5355\u4e3a\u51c6',
+                          style: TextStyle(
+                            color: Color(0xFF9F1239),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      Text(
-                        '\u91d1\u989d\u542b\u968f\u673a\u5c0f\u6570\uff0c\u7528\u4e8e\u8bc6\u522b\u60a8\u7684\u4ed8\u6b3e',
-                        style: TextStyle(
-                          color: const Color(0xFF9F1239).withOpacity(0.5),
-                          fontSize: 10,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        '\u4ed8\u6b3e\u65f6\u8bf7\u5907\u6ce8\u597d\u767b\u5f55\u8d26\u53f7\uff0c\u65b9\u4fbf\u5230\u8d26\u5ba1\u6838',
-                        style: TextStyle(
-                          color: Color(0xFFE11D48),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
                     ],
                   ),
                 ],
@@ -776,10 +610,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                 children: [
                   Expanded(
                     child: _buildChannelCard(
-                      'usdt',
-                      'USDT',
-                      'assets/images/contact/USDT.png',
-                      _usdtConfigs.isNotEmpty,
+                      'alipay',
+                      '\u652f\u4ed8\u5b9d',
+                      'assets/images/contact/alipay.png',
+                      true,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -788,16 +622,25 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                       'wechat',
                       '\u5fae\u4fe1\u652f\u4ed8',
                       'assets/images/contact/wechat.png',
-                      _wechatConfigs.isNotEmpty,
+                      true,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildChannelCard(
-                      'alipay',
-                      '\u652f\u4ed8\u5b9d',
-                      'assets/images/contact/alipay.png',
-                      _alipayConfigs.isNotEmpty,
+                      'qq',
+                      'QQ',
+                      'assets/images/contact/qq.png',
+                      true,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _buildChannelCard(
+                      'usdt',
+                      'USDT',
+                      'assets/images/contact/USDT.png',
+                      _usdtConfigs.isNotEmpty,
                     ),
                   ),
                 ],
@@ -825,10 +668,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                 const SizedBox(height: 20),
                 _buildPaymentInfo(),
               ],
-              if (_selectedChannel == 'wechat' && _wechatConfigs.isNotEmpty)
-                _buildWechatAlipayInfo(_wechatConfigs.first),
-              if (_selectedChannel == 'alipay' && _alipayConfigs.isNotEmpty)
-                _buildWechatAlipayInfo(_alipayConfigs.first),
+              if (_selectedChannel == 'wechat' ||
+                  _selectedChannel == 'alipay' ||
+                  _selectedChannel == 'qq')
+                _buildOnlinePaymentInfo(),
             ],
           ),
         ),
@@ -844,7 +687,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       String value, String label, String iconAsset, bool enabled) {
     final isSelected = _selectedChannel == value;
     return GestureDetector(
-      onTap: enabled ? () => setState(() => _selectedChannel = value) : null,
+      onTap: enabled
+          ? () => setState(() {
+                _selectedChannel = value;
+                _orderNo = null;
+              })
+          : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 8),
@@ -900,6 +748,157 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildOnlinePaymentInfo() {
+    final isAlipay = _selectedChannel == 'alipay';
+    final isQq = _selectedChannel == 'qq';
+    final accent = isAlipay
+        ? const Color(0xFF1677FF)
+        : isQq
+            ? const Color(0xFF12B7F5)
+            : const Color(0xFF07C160);
+    final channelName = isAlipay
+        ? '支付宝'
+        : isQq
+            ? 'QQ支付'
+            : '微信支付';
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withOpacity(0.22)),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withOpacity(0.08),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  isAlipay
+                      ? Icons.account_balance_wallet_rounded
+                      : isQq
+                          ? Icons.forum_rounded
+                          : Icons.chat_bubble_rounded,
+                  color: accent,
+                  size: 25,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$channelName 在线支付',
+                      style: const TextStyle(
+                        color: Color(0xFF3F1723),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      '订单金额由服务端计算，无需手动备注',
+                      style: TextStyle(
+                        color: Color(0xFF8A6872),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF3),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '自动开通',
+                  style: TextStyle(
+                    color: Color(0xFF168A50),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          const _OnlinePaymentStep(
+            number: '1',
+            title: '创建安全订单',
+            description: '服务端按当前套餐和周期生成订单',
+          ),
+          const _OnlinePaymentStep(
+            number: '2',
+            title: '前往收银台付款',
+            description: '将在系统浏览器中打开支付页面',
+          ),
+          const _OnlinePaymentStep(
+            number: '3',
+            title: '返回应用检查到账',
+            description: '支付成功后套餐会自动开通，请勿重复付款',
+            last: true,
+          ),
+          if (!_loggedIn) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                '请先登录账号再发起在线支付，套餐将开通到当前账号。',
+                style: TextStyle(
+                  color: Color(0xFF9A4B13),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+          if (_orderNo != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F1F3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '当前订单：$_orderNo\n如已付款，请点击下方按钮检查到账状态。',
+                style: const TextStyle(
+                  color: Color(0xFF6F4B57),
+                  fontSize: 12,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1005,7 +1004,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
           ],
           const SizedBox(height: 16),
 
-          // 收款二维码
+          // 鏀舵浜岀淮鐮?
           if (config.qrCode.isNotEmpty) ...[
             Center(
               child: Container(
@@ -1047,7 +1046,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             const SizedBox(height: 16),
           ],
 
-          // 收款地址
+          // 鏀舵鍦板潃
           if (config.address.isNotEmpty) ...[
             const Text(
               '收款地址',
@@ -1092,7 +1091,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             const SizedBox(height: 16),
           ],
 
-          // 转账金额提示
+          // 杞处閲戦鎻愮ず
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -1163,7 +1162,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ),
           ),
           const SizedBox(height: 12),
-          // USDT 充值活动提示
+          // USDT 鍏呭€兼椿鍔ㄦ彁绀?
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
@@ -1176,7 +1175,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             ),
             child: Row(
               children: [
-                const Text('🎁', style: TextStyle(fontSize: 22)),
+                const Text('馃巵', style: TextStyle(fontSize: 22)),
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Column(
@@ -1331,7 +1330,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                     Row(
                       children: [
                         Text(
-                          '¥${_paymentAmount.toStringAsFixed(3)}',
+                          '楼${_paymentAmount.toStringAsFixed(3)}',
                           style: const TextStyle(
                             color: Color(0xFFE11D48),
                             fontSize: 20,
@@ -1374,6 +1373,2229 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     );
   }
 
+  bool get _autoModeAvailable => _loggedIn;
+
+  bool get _manualModeAvailable => _selectedManualConfig != null;
+
+  _PaymentConfig? get _selectedManualConfig {
+    if (_selectedManualChannel == 'usdt') {
+      return _currentUsdtConfig;
+    }
+    if (_selectedManualChannel == 'wechat' && _wechatConfigs.isNotEmpty) {
+      return _wechatConfigs.first;
+    }
+    if (_selectedManualChannel == 'alipay' && _alipayConfigs.isNotEmpty) {
+      return _alipayConfigs.first;
+    }
+    if (_selectedManualChannel == 'qq' && _qqConfigs.isNotEmpty) {
+      return _qqConfigs.first;
+    }
+    return null;
+  }
+
+  Widget _buildMobilePaymentFlow() {
+    return LayoutBuilder(
+      builder: (_, constraints) {
+        final headerHeight = constraints.maxHeight * 0.52;
+        return Column(
+          children: [
+            SizedBox(
+              height: headerHeight,
+              child: _buildMobileHeaderCard(),
+            ),
+            const SizedBox(height: 10),
+            _buildModeSegment(),
+            const SizedBox(height: 8),
+            Expanded(child: _buildModeBody()),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMobileHeaderCard() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF5B7C5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '订单信息',
+            style: TextStyle(
+              color: Color(0xFF881337),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          _buildInfoRow('套餐', widget.planName),
+          _buildInfoRow('周期', widget.cycle),
+          const SizedBox(height: 12),
+          const Divider(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                '支付金额',
+                style: TextStyle(
+                  color: Color(0xFF881337),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '¥${_paymentAmount.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Color(0xFFE11D48),
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    '≈ ${_usdtAmount.toStringAsFixed(2)} USDT',
+                    style: TextStyle(
+                      color: const Color(0xFF9F1239).withOpacity(0.75),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeSegment() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFF5B7C5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextButton(
+              onPressed: () {
+                if (!_autoModeAvailable) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('自动识别支付需要登录且有微信/支付宝配置')),
+                  );
+                  return;
+                }
+                setState(() => _paymentMode = 'auto');
+              },
+              style: TextButton.styleFrom(
+                backgroundColor: _paymentMode == 'auto'
+                    ? const Color(0xFFF9A8D4)
+                    : Colors.transparent,
+                foregroundColor: _paymentMode == 'auto'
+                    ? const Color(0xFF881337)
+                    : const Color(0xFF9F1239),
+                shape: const RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.horizontal(left: Radius.circular(12)),
+                ),
+              ),
+              child: const Text('自动识别'),
+            ),
+          ),
+          Expanded(
+            child: TextButton(
+              onPressed: () => setState(() => _paymentMode = 'manual'),
+              style: TextButton.styleFrom(
+                backgroundColor: _paymentMode == 'manual'
+                    ? const Color(0xFFF9A8D4)
+                    : Colors.transparent,
+                foregroundColor: _paymentMode == 'manual'
+                    ? const Color(0xFF881337)
+                    : const Color(0xFF9F1239),
+                shape: const RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.horizontal(right: Radius.circular(12)),
+                ),
+              ),
+              child: const Text('手动支付'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeBody() {
+    return IndexedStack(
+      index: _paymentMode == 'auto' ? 0 : 1,
+      children: [
+        _buildAutoModeBody(),
+        _buildManualModeBody(),
+      ],
+    );
+  }
+
+  Widget _buildAutoModeBody() {
+    if (!_loggedIn) {
+      return _buildAutoLoginTip();
+    }
+    if (!_autoModeAvailable) {
+      return _buildAutoUnavailableTip();
+    }
+    final selectedHasConfig = _selectedChannel == 'alipay'
+        ? _alipayConfigs.isNotEmpty
+        : _wechatConfigs.isNotEmpty;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+      children: [
+        const Text(
+          '选择自动渠道',
+          style: TextStyle(
+            color: Color(0xFF881337),
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildModePayOption(
+                keyValue: 'wechat',
+                title: '微信支付',
+                asset: 'assets/images/contact/wechat.png',
+                enabled: _wechatConfigs.isNotEmpty,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildModePayOption(
+                keyValue: 'alipay',
+                title: '支付宝',
+                asset: 'assets/images/contact/alipay.png',
+                enabled: _alipayConfigs.isNotEmpty,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFF5B7C5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '操作说明',
+                style: TextStyle(
+                  color: Color(0xFF881337),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 6),
+              _buildOnlinePaymentInfo(),
+              const SizedBox(height: 12),
+              if (!selectedHasConfig)
+                const Text(
+                  '当前通道未返回可用配置，请切换其他通道',
+                  style: TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        onPressed:
+                            _creatingPayment ? null : _startOnlinePayment,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFE11D48),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: _creatingPayment
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('发起支付'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    OutlinedButton(
+                      onPressed: _checkAndShowStatus,
+                      child: const Text('已支付？'),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualModeBody() {
+    final usdtNetworks = _usdtConfigs
+        .map((item) => item.type.replaceFirst('usdt_', ''))
+        .toSet()
+        .toList()
+      ..sort();
+    final manualConfig = _selectedManualConfig;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+      children: [
+        const Text(
+          '手动支付',
+          style: TextStyle(
+            color: Color(0xFF881337),
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 12,
+          runSpacing: 10,
+          children: [
+            _buildManualChannelCard(
+              keyValue: 'usdt',
+              title: 'USDT',
+              assetPath: 'assets/images/contact/USDT.png',
+              enabled: _usdtConfigs.isNotEmpty,
+            ),
+            _buildManualChannelCard(
+              keyValue: 'wechat',
+              title: '微信',
+              assetPath: 'assets/images/contact/wechat.png',
+              enabled: _wechatConfigs.isNotEmpty,
+            ),
+            _buildManualChannelCard(
+              keyValue: 'alipay',
+              title: '支付宝',
+              assetPath: 'assets/images/contact/alipay.png',
+              enabled: _alipayConfigs.isNotEmpty,
+            ),
+            _buildManualChannelCard(
+              keyValue: 'qq',
+              title: 'QQ',
+              assetPath: 'assets/images/contact/qq.png',
+              enabled: _qqConfigs.isNotEmpty,
+            ),
+          ],
+        ),
+        if (_selectedManualChannel == 'usdt' && usdtNetworks.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text(
+            'USDT 网络',
+            style: TextStyle(
+              color: Color(0xFF881337),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final network in usdtNetworks)
+                ChoiceChip(
+                  label: Text(network.toUpperCase()),
+                  selected: _selectedUsdtNetwork == network,
+                  onSelected: (_) => setState(() {
+                    _selectedUsdtNetwork = network;
+                    _selectedManualChannel = 'usdt';
+                  }),
+                  backgroundColor: Colors.white,
+                  selectedColor: const Color(0xFFF9A8D4),
+                  labelStyle: TextStyle(
+                    color: _selectedUsdtNetwork == network
+                        ? const Color(0xFF881337)
+                        : const Color(0xFF9F1239),
+                  ),
+                  side: BorderSide(
+                    color: _selectedUsdtNetwork == network
+                        ? const Color(0xFFE11D48)
+                        : const Color(0xFFE7A4B5),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 12),
+        if (!_manualModeAvailable)
+          Container(
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF1F2),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE7A4B5)),
+            ),
+            child: const Text(
+              '当前选项未配置收款信息，请先联系管理员配置支付数据',
+              style: TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+            ),
+          )
+        else if (_selectedManualChannel == 'usdt')
+          _buildPaymentInfo()
+        else if (manualConfig != null)
+          _buildWechatAlipayInfo(manualConfig),
+      ],
+    );
+  }
+
+  Widget _buildManualChannelCard({
+    required String keyValue,
+    required String title,
+    required String assetPath,
+    required bool enabled,
+  }) {
+    final isSelected = _selectedManualChannel == keyValue;
+    return GestureDetector(
+      onTap: () {
+        if (!enabled) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$title 通道未配置')),
+          );
+          return;
+        }
+        setState(() => _selectedManualChannel = keyValue);
+      },
+      child: Container(
+        width: 120,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFFF9A8D4).withOpacity(0.8)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color:
+                isSelected ? const Color(0xFFE11D48) : const Color(0xFFF5B7C5),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Opacity(
+          opacity: enabled ? 1 : 0.45,
+          child: Column(
+            children: [
+              Image.asset(
+                assetPath,
+                width: 34,
+                height: 34,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected
+                      ? const Color(0xFF881337)
+                      : const Color(0xFF9F1239),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModePayOption({
+    required String keyValue,
+    required String title,
+    required String asset,
+    required bool enabled,
+  }) {
+    final isSelected = _selectedChannel == keyValue;
+    return GestureDetector(
+      onTap: () {
+        if (!enabled) {
+          return;
+        }
+        setState(() {
+          _selectedChannel = keyValue;
+          _paymentMode = 'auto';
+        });
+      },
+      child: Opacity(
+        opacity: enabled ? 1 : 0.45,
+        child: Container(
+          height: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFF9A8D4) : Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFFE11D48)
+                  : const Color(0xFFF5B7C5),
+            ),
+          ),
+          child: Row(
+            children: [
+              Image.asset(asset, width: 34, height: 34),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  color: isSelected
+                      ? const Color(0xFF881337)
+                      : const Color(0xFF9F1239),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoLoginTip() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 24, 18, 16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF1F2),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE7A4B5)),
+          ),
+          child: const Text(
+            '当前未登录：自动支付需登录并有可用配置。请先登录后切到自动支付，或直接使用手动支付。',
+            style: TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAutoUnavailableTip() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 24, 18, 16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF1F2),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE7A4B5)),
+          ),
+          child: const Text(
+            '当前账号未返回微信/支付宝自动通道，无法自动识别，请切到手动支付。',
+            style: TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobilePaymentFlowV2() {
+    return Column(
+      children: [
+        _buildMobileReceiptV2(),
+        Transform.translate(
+          offset: const Offset(0, -22),
+          child: _buildPaymentModeSwitchV3(),
+        ),
+        Expanded(
+          child: Transform.translate(
+            offset: const Offset(0, -12),
+            child: IndexedStack(
+              index: _paymentMode == 'auto' ? 0 : 1,
+              children: [
+                _buildAutoPaymentV3(),
+                _buildManualPaymentV3(),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileReceiptV2() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 38),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF310916), Color(0xFF881337), Color(0xFFE11D48)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x339F1239),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    '订单确认',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.planName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  children: [
+                    const Icon(Icons.schedule_rounded,
+                        size: 14, color: Color(0xFFFFD5DF)),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        widget.cycle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFFFD5DF),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                '应付金额',
+                style: TextStyle(
+                  color: Color(0xFFFFD5DF),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '¥${_paymentAmount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 32,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1.2,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                '≈ ${_usdtAmount.toStringAsFixed(2)} USDT',
+                style: const TextStyle(
+                  color: Color(0xFFFFD5DF),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentModeSwitchV2() {
+    return Container(
+      height: 58,
+      margin: const EdgeInsets.symmetric(horizontal: 28),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1F881337),
+            blurRadius: 18,
+            offset: Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildPaymentModeButtonV2(
+              value: 'auto',
+              icon: Icons.auto_awesome_rounded,
+              label: '自动识别',
+            ),
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: _buildPaymentModeButtonV2(
+              value: 'manual',
+              icon: Icons.qr_code_2_rounded,
+              label: '手动支付',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentModeButtonV2({
+    required String value,
+    required IconData icon,
+    required String label,
+  }) {
+    final selected = _paymentMode == value;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => setState(() => _paymentMode = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF881337) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? Colors.white : const Color(0xFF9F1239),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : const Color(0xFF6F4B57),
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoPaymentV2() {
+    if (!_loggedIn) {
+      return _buildAutoEmptyV2(
+        icon: Icons.lock_outline_rounded,
+        title: '登录后可自动识别',
+        description: '自动支付会绑定当前账号，并在到账后立即开通套餐。',
+      );
+    }
+    if (!_autoModeAvailable) {
+      return _buildAutoEmptyV2(
+        icon: Icons.route_outlined,
+        title: '自动通道暂不可用',
+        description: '当前没有可用的微信或支付宝接口，请使用手动支付。',
+      );
+    }
+
+    final selectedHasConfig = _selectedChannel == 'alipay'
+        ? _alipayConfigs.isNotEmpty
+        : _wechatConfigs.isNotEmpty;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+      children: [
+        const Row(
+          children: [
+            Text(
+              '选择支付方式',
+              style: TextStyle(
+                color: Color(0xFF3F1723),
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Spacer(),
+            Icon(Icons.verified_user_rounded,
+                size: 15, color: Color(0xFF16A05D)),
+            SizedBox(width: 4),
+            Text(
+              '服务端自动核验',
+              style: TextStyle(color: Color(0xFF168A50), fontSize: 11),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildAutoChannelV2(
+                value: 'wechat',
+                label: '微信支付',
+                asset: 'assets/images/contact/wechat.png',
+                enabled: _wechatConfigs.isNotEmpty,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _buildAutoChannelV2(
+                value: 'alipay',
+                label: '支付宝',
+                asset: 'assets/images/contact/alipay.png',
+                enabled: _alipayConfigs.isNotEmpty,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFFFD5DF)),
+          ),
+          child: Column(
+            children: [
+              _buildPaymentFlowLineV2(
+                icon: Icons.receipt_long_rounded,
+                title: '创建订单',
+                description: '金额由服务端计算，避免人工核对',
+              ),
+              _buildPaymentFlowLineV2(
+                icon: Icons.open_in_new_rounded,
+                title: '前往付款',
+                description: '自动打开对应支付应用或收银台',
+              ),
+              _buildPaymentFlowLineV2(
+                icon: Icons.bolt_rounded,
+                title: '自动开通',
+                description: '到账后自动开通当前账号套餐',
+                last: true,
+              ),
+              const SizedBox(height: 16),
+              if (!selectedHasConfig)
+                const Text(
+                  '当前通道不可用，请切换其他支付方式',
+                  style: TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton.icon(
+                    onPressed: _creatingPayment
+                        ? null
+                        : _orderNo == null
+                            ? _startOnlinePayment
+                            : _checkAndShowStatus,
+                    icon: _creatingPayment
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Icon(_orderNo == null
+                            ? Icons.arrow_forward_rounded
+                            : Icons.refresh_rounded),
+                    label: Text(
+                      _orderNo == null ? '确认并前往支付' : '检查订单到账状态',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFE11D48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+              if (_orderNo != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '订单号：$_orderNo',
+                  style:
+                      const TextStyle(color: Color(0xFF8A6872), fontSize: 11),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentFlowLineV2({
+    required IconData icon,
+    required String title,
+    required String description,
+    bool last = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: last ? 0 : 13),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFE4EA),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: const Color(0xFFE11D48)),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF3F1723),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  description,
+                  style:
+                      const TextStyle(color: Color(0xFF8A6872), fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAutoChannelV2({
+    required String value,
+    required String label,
+    required String asset,
+    required bool enabled,
+  }) {
+    final selected = _selectedChannel == value;
+    return GestureDetector(
+      onTap: enabled
+          ? () => setState(() {
+                _selectedChannel = value;
+                _orderNo = null;
+              })
+          : null,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.42,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 82,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFFFE4EA) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color:
+                  selected ? const Color(0xFFE11D48) : const Color(0xFFFFD5DF),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Image.asset(asset),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: selected
+                        ? const Color(0xFF881337)
+                        : const Color(0xFF6F4B57),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (selected)
+                const Icon(Icons.check_circle_rounded,
+                    size: 18, color: Color(0xFFE11D48)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildManualPaymentV2() {
+    final networks = _usdtConfigs
+        .map((item) => item.type.replaceFirst('usdt_', ''))
+        .toSet()
+        .toList()
+      ..sort();
+    final manualConfig = _selectedManualConfig;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+      children: [
+        const Row(
+          children: [
+            Text(
+              '选择收款渠道',
+              style: TextStyle(
+                color: Color(0xFF3F1723),
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Spacer(),
+            Text(
+              '扫码或保存二维码',
+              style: TextStyle(color: Color(0xFF8A6872), fontSize: 11),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildManualChannelV2(
+                value: 'usdt',
+                label: 'USDT',
+                asset: 'assets/images/contact/USDT.png',
+                enabled: _usdtConfigs.isNotEmpty,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildManualChannelV2(
+                value: 'wechat',
+                label: '微信',
+                asset: 'assets/images/contact/wechat.png',
+                enabled: _wechatConfigs.isNotEmpty,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildManualChannelV2(
+                value: 'alipay',
+                label: '支付宝',
+                asset: 'assets/images/contact/alipay.png',
+                enabled: _alipayConfigs.isNotEmpty,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildManualChannelV2(
+                value: 'qq',
+                label: 'QQ',
+                asset: 'assets/images/contact/qq.png',
+                enabled: _qqConfigs.isNotEmpty,
+              ),
+            ),
+          ],
+        ),
+        if (_selectedManualChannel == 'usdt' && networks.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const Text(
+            '选择 USDT 网络',
+            style: TextStyle(
+              color: Color(0xFF3F1723),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final network in networks)
+                ChoiceChip(
+                  label: Text(network.toUpperCase()),
+                  selected: _selectedUsdtNetwork == network,
+                  onSelected: (_) => setState(() {
+                    _selectedUsdtNetwork = network;
+                    _selectedManualChannel = 'usdt';
+                  }),
+                  backgroundColor: Colors.white,
+                  selectedColor: const Color(0xFFFFE4EA),
+                  side: BorderSide(
+                    color: _selectedUsdtNetwork == network
+                        ? const Color(0xFFE11D48)
+                        : const Color(0xFFFFD5DF),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (!_manualModeAvailable)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFFD5DF)),
+            ),
+            child: const Text(
+              '当前渠道还没有配置收款信息，请切换其他方式。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF9F1239), fontSize: 13),
+            ),
+          )
+        else if (_selectedManualChannel == 'usdt')
+          _buildPaymentInfo()
+        else if (manualConfig != null)
+          _buildWechatAlipayInfo(manualConfig),
+      ],
+    );
+  }
+
+  Widget _buildManualChannelV2({
+    required String value,
+    required String label,
+    required String asset,
+    required bool enabled,
+  }) {
+    final selected = _selectedManualChannel == value;
+    return GestureDetector(
+      onTap: () {
+        if (!enabled) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$label 通道未配置')),
+          );
+          return;
+        }
+        setState(() => _selectedManualChannel = value);
+      },
+      child: Opacity(
+        opacity: enabled ? 1 : 0.42,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 78,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFFFE4EA) : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color:
+                  selected ? const Color(0xFFE11D48) : const Color(0xFFFFD5DF),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Image.asset(asset, width: 30, height: 30, fit: BoxFit.contain),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: selected
+                      ? const Color(0xFF881337)
+                      : const Color(0xFF6F4B57),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoEmptyV2({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFFFD5DF)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFE4EA),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: const Color(0xFFE11D48), size: 27),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFF3F1723),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                description,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF8A6872),
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _paymentMode = 'manual'),
+                icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                label: const Text('切换到手动支付'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFE11D48),
+                  side: const BorderSide(color: Color(0xFFE11D48)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentModeSwitchV3() {
+    return Container(
+      height: 54,
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFD5DF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF5B7C5)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1F881337),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        children: [
+          Expanded(child: _buildModeTabV3('auto', '\u81ea\u52a8\u652f\u4ed8')),
+          Expanded(
+              child: _buildModeTabV3('manual', '\u624b\u52a8\u652f\u4ed8')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeTabV3(String value, String label) {
+    final selected = _paymentMode == value;
+    return InkWell(
+      onTap: () => setState(() => _paymentMode = value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        alignment: Alignment.center,
+        color: selected ? const Color(0xFF881337) : const Color(0xFFFFD5DF),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : const Color(0xFF881337),
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoPaymentV3() {
+    if (!_loggedIn) {
+      return _buildAutoEmptyV2(
+        icon: Icons.lock_outline_rounded,
+        title: '\u767b\u5f55\u540e\u53ef\u81ea\u52a8\u652f\u4ed8',
+        description:
+            '\u652f\u4ed8\u8ba2\u5355\u5c06\u7ed1\u5b9a\u5f53\u524d\u8d26\u53f7\uff0c\u5230\u8d26\u540e\u81ea\u52a8\u5f00\u901a\u5957\u9910\u3002',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+      children: [
+        _buildChannelHeaderV3(
+            '\u9009\u62e9\u81ea\u52a8\u652f\u4ed8\u65b9\u5f0f',
+            '\u6d4f\u89c8\u5668\u6536\u94f6\u53f0'),
+        const SizedBox(height: 12),
+        _buildFourChannelsV3(automatic: true),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFFFD5DF)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '\u652f\u4ed8\u6d41\u7a0b',
+                style: TextStyle(
+                  color: Color(0xFF3F1723),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _buildAutoStepV3('1', '\u521b\u5efa\u5b89\u5168\u8ba2\u5355',
+                  '\u670d\u52a1\u7aef\u8ba1\u7b97\u5957\u9910\u91d1\u989d\u5e76\u751f\u6210\u8ba2\u5355'),
+              _buildAutoStepV3(
+                  '2',
+                  '\u6253\u5f00\u6d4f\u89c8\u5668\u6536\u94f6\u53f0',
+                  '\u81ea\u52a8\u8df3\u8f6c\u5230\u652f\u4ed8\u5b9d\u3001\u5fae\u4fe1\u6216QQ\u652f\u4ed8'),
+              _buildAutoStepV3(
+                  '3',
+                  '\u56de\u8c03\u786e\u8ba4\u540e\u5230\u8d26',
+                  '\u7f51\u5173\u901a\u77e5\u670d\u52a1\u7aef\u540e\u81ea\u52a8\u5f00\u901a\u5957\u9910',
+                  last: true),
+              const SizedBox(height: 15),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: FilledButton.icon(
+                  onPressed: _creatingPayment
+                      ? null
+                      : _orderNo == null
+                          ? _startOnlinePayment
+                          : _checkAndShowStatus,
+                  icon: _creatingPayment
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.open_in_browser_rounded),
+                  label: Text(
+                    _orderNo == null
+                        ? '\u786e\u8ba4\u5e76\u524d\u5f80\u652f\u4ed8'
+                        : '\u68c0\u67e5\u8ba2\u5355\u5230\u8d26\u72b6\u6001',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE11D48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualPaymentV3() {
+    final manualConfig = _selectedManualConfig;
+    final networks = _usdtConfigs
+        .map((item) => item.type.replaceFirst('usdt_', ''))
+        .toSet()
+        .toList()
+      ..sort();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
+      children: [
+        _buildChannelHeaderV3(
+            '\u9009\u62e9\u624b\u52a8\u6536\u6b3e\u65b9\u5f0f',
+            '\u626b\u7801\u6216\u4fdd\u5b58\u4e8c\u7ef4\u7801'),
+        const SizedBox(height: 12),
+        _buildFourChannelsV3(automatic: false),
+        if (_selectedManualChannel == 'usdt' && networks.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final network in networks)
+                ChoiceChip(
+                  label: Text(network.toUpperCase()),
+                  selected: _selectedUsdtNetwork == network,
+                  onSelected: (_) =>
+                      setState(() => _selectedUsdtNetwork = network),
+                  backgroundColor: Colors.white,
+                  selectedColor: const Color(0xFFFFD5DF),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (!_manualModeAvailable)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFFD5DF)),
+            ),
+            child: const Text(
+              '\u5f53\u524d\u6e20\u9053\u8fd8\u6ca1\u6709\u914d\u7f6e\u6536\u6b3e\u4fe1\u606f',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF9F1239)),
+            ),
+          )
+        else if (_selectedManualChannel == 'usdt')
+          _buildPaymentInfo()
+        else if (manualConfig != null)
+          _buildWechatAlipayInfo(manualConfig),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: FilledButton.icon(
+            onPressed: _manualModeAvailable ? _confirmManualPaymentV3 : null,
+            icon: const Icon(Icons.check_circle_outline_rounded),
+            label: const Text(
+              '\u6211\u5df2\u652f\u4ed8\u5b8c\u6bd5',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE11D48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChannelHeaderV3(String title, String hint) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF3F1723),
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const Spacer(),
+        Text(hint,
+            style: const TextStyle(color: Color(0xFF8A6872), fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _buildFourChannelsV3({required bool automatic}) {
+    return Row(
+      children: [
+        Expanded(
+            child: _buildChannelItemV3('alipay', '\u652f\u4ed8\u5b9d',
+                'assets/images/contact/alipay.png', automatic)),
+        const SizedBox(width: 7),
+        Expanded(
+            child: _buildChannelItemV3('wechat', '\u5fae\u4fe1',
+                'assets/images/contact/wechat.png', automatic)),
+        const SizedBox(width: 7),
+        Expanded(
+            child: _buildChannelItemV3(
+                'qq', 'QQ', 'assets/images/contact/qq.png', automatic)),
+        const SizedBox(width: 7),
+        Expanded(
+            child: _buildChannelItemV3(
+                'usdt', 'USDT', 'assets/images/contact/USDT.png', automatic)),
+      ],
+    );
+  }
+
+  Widget _buildChannelItemV3(
+    String value,
+    String label,
+    String asset,
+    bool automatic,
+  ) {
+    final selected =
+        automatic ? _selectedChannel == value : _selectedManualChannel == value;
+    final enabled = switch (value) {
+      'alipay' => automatic || _alipayConfigs.isNotEmpty,
+      'wechat' => automatic || _wechatConfigs.isNotEmpty,
+      'qq' => automatic || _qqConfigs.isNotEmpty,
+      _ => _usdtConfigs.isNotEmpty,
+    };
+    return GestureDetector(
+      onTap: () {
+        if (!enabled) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$label \u901a\u9053\u672a\u914d\u7f6e')),
+          );
+          return;
+        }
+        if (automatic && value == 'usdt') {
+          setState(() {
+            _paymentMode = 'manual';
+            _selectedManualChannel = 'usdt';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text(
+                    'USDT \u9700\u8981\u4f7f\u7528\u94fe\u4e0a\u8f6c\u8d26\u6d41\u7a0b')),
+          );
+          return;
+        }
+        setState(() {
+          if (automatic) {
+            _selectedChannel = value;
+            _orderNo = null;
+          } else {
+            _selectedManualChannel = value;
+          }
+        });
+      },
+      child: Opacity(
+        opacity: enabled ? 1 : 0.4,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 78,
+          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFFFD5DF) : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color:
+                  selected ? const Color(0xFFE11D48) : const Color(0xFFF5B7C5),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Image.asset(asset, width: 30, height: 30, fit: BoxFit.contain),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: selected
+                      ? const Color(0xFF881337)
+                      : const Color(0xFF6F4B57),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoStepV3(
+    String number,
+    String title,
+    String description, {
+    bool last = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: last ? 0 : 11),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: const Color(0xFFFFD5DF),
+            child: Text(number,
+                style: const TextStyle(
+                    color: Color(0xFF881337), fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: Color(0xFF3F1723),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800)),
+                Text(description,
+                    style: const TextStyle(
+                        color: Color(0xFF8A6872), fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmManualPaymentV3() async {
+    final config = _selectedManualConfig;
+    final qrUrl = config?.qrCode ?? '';
+    final saved = qrUrl.isNotEmpty && _savedManualQrUrls.contains(qrUrl);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(saved
+            ? '\u5df2\u68c0\u6d4b\u5230\u4e8c\u7ef4\u7801\u4fdd\u5b58\u8bb0\u5f55'
+            : '\u672a\u68c0\u6d4b\u5230\u4e8c\u7ef4\u7801\u4fdd\u5b58\u8bb0\u5f55'),
+        content: Text(saved
+            ? '\u8bf7\u786e\u4fdd\u5df2\u5b8c\u6210\u5b9e\u9645\u8f6c\u8d26\u3002\u624b\u52a8\u6536\u6b3e\u9700\u8981\u53ef\u9a8c\u8bc1\u7684\u5230\u8d26\u7ed3\u679c\uff0c\u4e0d\u80fd\u4ec5\u51ed\u4e0b\u8f7d\u56fe\u7247\u5f00\u901a\u5957\u9910\u3002'
+            : '\u8bf7\u5148\u4fdd\u5b58\u5f53\u524d\u6536\u6b3e\u4e8c\u7ef4\u7801\u5e76\u5b8c\u6210\u4ed8\u6b3e\uff0c\u6216\u8054\u7cfb\u5ba2\u670d\u6838\u5b9e\u3002'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('\u53d6\u6d88'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _openContact();
+            },
+            child: const Text('\u8054\u7cfb\u5ba2\u670d\u6838\u5b9e'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobilePaymentFlowV4() {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 18),
+            child: Column(
+              children: [
+                _buildMobileReceiptV4(),
+                Transform.translate(
+                  offset: const Offset(0, -18),
+                  child: _buildPaymentModeSwitchV4(),
+                ),
+                Transform.translate(
+                  offset: const Offset(0, -8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: _paymentMode == 'auto'
+                        ? _buildAutoContentV4()
+                        : _buildManualContentV4(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        _buildPaymentBottomActionV4(),
+      ],
+    );
+  }
+
+  Widget _buildMobileReceiptV4() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 34),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF310916), Color(0xFF881337), Color(0xFFE11D48)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('\u8ba2\u5355\u786e\u8ba4',
+                    style: TextStyle(
+                        color: Color(0xFFFFD5DF),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2)),
+                const SizedBox(height: 11),
+                Text(widget.planName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 5),
+                Text(widget.cycle,
+                    style: const TextStyle(
+                        color: Color(0xFFFFD5DF), fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text('\u5e94\u4ed8\u91d1\u989d',
+                  style: TextStyle(color: Color(0xFFFFD5DF), fontSize: 11)),
+              const SizedBox(height: 3),
+              Text('¥${_paymentAmount.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 31,
+                      height: 1,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentModeSwitchV4() {
+    return Container(
+      width: double.infinity,
+      height: 76,
+      margin: const EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(19),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1F881337),
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: _buildModeTabV4(
+              'auto',
+              '\u81ea\u52a8\u652f\u4ed8',
+              '\u81ea\u52a8\u5230\u8d26',
+              Icons.bolt_rounded,
+            ),
+          ),
+          const SizedBox(width: 5),
+          Expanded(
+            child: _buildModeTabV4(
+              'manual',
+              '\u624b\u52a8\u652f\u4ed8',
+              '\u626b\u7801\u8f6c\u8d26',
+              Icons.qr_code_2_rounded,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModeTabV4(
+    String value,
+    String label,
+    String description,
+    IconData icon,
+  ) {
+    final selected = _paymentMode == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _paymentMode = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            gradient: selected
+                ? const LinearGradient(
+                    colors: [Color(0xFFBE123C), Color(0xFFE11D48)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: selected ? null : const Color(0xFFFFF8FA),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 22,
+                color: selected ? Colors.white : const Color(0xFFE11D48),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color:
+                            selected ? Colors.white : const Color(0xFF3F1723),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      description,
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFFFFD5DF)
+                            : const Color(0xFF9F6A78),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAutoContentV4() {
+    if (!_loggedIn) {
+      return _buildInlineNoticeV4(Icons.lock_outline_rounded,
+          '\u8bf7\u5148\u767b\u5f55\u8d26\u53f7\u518d\u4f7f\u7528\u81ea\u52a8\u652f\u4ed8');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildChannelHeaderV3('\u9009\u62e9\u652f\u4ed8\u65b9\u5f0f', ''),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+                child: _buildChannelItemV3('alipay', '\u652f\u4ed8\u5b9d',
+                    'assets/images/contact/alipay.png', true)),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _buildChannelItemV3('wechat', '\u5fae\u4fe1',
+                    'assets/images/contact/wechat.png', true)),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _buildChannelItemV3(
+                    'qq', 'QQ', 'assets/images/contact/qq.png', true)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFFFD5DF)),
+          ),
+          child: Column(
+            children: [
+              _buildAutoStepV3('1', '\u521b\u5efa\u652f\u4ed8\u8ba2\u5355',
+                  '\u670d\u52a1\u7aef\u786e\u8ba4\u5957\u9910\u548c\u91d1\u989d'),
+              _buildAutoStepV3(
+                  '2',
+                  '\u6253\u5f00\u6d4f\u89c8\u5668\u6536\u94f6\u53f0',
+                  '\u6309\u9009\u62e9\u7684\u6e20\u9053\u5b8c\u6210\u4ed8\u6b3e'),
+              _buildAutoStepV3(
+                  '3',
+                  '\u652f\u4ed8\u56de\u8c03\u81ea\u52a8\u5f00\u901a',
+                  '\u5230\u8d26\u540e\u5957\u9910\u81ea\u52a8\u66f4\u65b0',
+                  last: true),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManualContentV4() {
+    final config = _selectedManualConfig;
+    final networks = _usdtConfigs
+        .map((item) => item.type.replaceFirst('usdt_', ''))
+        .toSet()
+        .toList()
+      ..sort();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildChannelHeaderV3('\u9009\u62e9\u6536\u6b3e\u65b9\u5f0f',
+            '\u626b\u7801\u6216\u4fdd\u5b58\u4e8c\u7ef4\u7801'),
+        const SizedBox(height: 12),
+        _buildFourChannelsV3(automatic: false),
+        if (_selectedManualChannel == 'usdt' && networks.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final network in networks)
+                ChoiceChip(
+                  label: Text(network.toUpperCase()),
+                  selected: _selectedUsdtNetwork == network,
+                  onSelected: (_) =>
+                      setState(() => _selectedUsdtNetwork = network),
+                  selectedColor: const Color(0xFFFFD5DF),
+                  backgroundColor: Colors.white,
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (!_manualModeAvailable)
+          _buildInlineNoticeV4(Icons.info_outline_rounded,
+              '\u5f53\u524d\u6e20\u9053\u672a\u914d\u7f6e\u6536\u6b3e\u4fe1\u606f')
+        else if (config != null)
+          _buildManualQrCardV4(config),
+      ],
+    );
+  }
+
+  Widget _buildManualQrCardV4(_PaymentConfig config) {
+    final isUsdt = _selectedManualChannel == 'usdt';
+    final amount = isUsdt
+        ? '${_usdtAmount.toStringAsFixed(3)} USDT'
+        : '¥${_paymentAmount.toStringAsFixed(2)}';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFD5DF)),
+      ),
+      child: Column(
+        children: [
+          Text(config.label,
+              style: const TextStyle(
+                  color: Color(0xFF3F1723),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900)),
+          if (config.qrCode.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(config.qrCode,
+                  width: 210,
+                  height: 210,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox(
+                      width: 210,
+                      height: 210,
+                      child: Icon(Icons.broken_image_outlined, size: 50))),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => _saveQrCodeToGallery(config.qrCode),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('\u4fdd\u5b58\u4e8c\u7ef4\u7801'),
+            ),
+          ],
+          if (config.address.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                    child: Text(config.address,
+                        style: const TextStyle(
+                            color: Color(0xFF6F4B57), fontSize: 12))),
+                IconButton(
+                  onPressed: () =>
+                      _copyText(config.address, '\u6536\u6b3e\u5730\u5740'),
+                  icon: const Icon(Icons.copy_rounded),
+                ),
+              ],
+            ),
+          ],
+          const Divider(height: 24),
+          Row(
+            children: [
+              const Text('\u8f6c\u8d26\u91d1\u989d',
+                  style: TextStyle(color: Color(0xFF6F4B57), fontSize: 13)),
+              const Spacer(),
+              Text(amount,
+                  style: const TextStyle(
+                      color: Color(0xFFE11D48),
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900)),
+            ],
+          ),
+          if (isUsdt) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1F2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFD5DF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.card_giftcard_rounded,
+                      color: Color(0xFFE11D48),
+                      size: 19,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '\u5145\u503c\u5956\u52b1',
+                          style: TextStyle(
+                            color: Color(0xFF881337),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          '\u6bcf\u5145\u503c 10 USDT \u8d60\u9001 1 USDT\uff0c\u53ef\u7d2f\u8ba1',
+                          style: TextStyle(
+                            color: Color(0xFF6F4B57),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          '\u4f8b\u5982\uff1a\u5145\u503c 20 USDT\uff0c\u5b9e\u9645\u5230\u8d26 22 USDT',
+                          style: TextStyle(
+                            color: Color(0xFF9F6A78),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineNoticeV4(IconData icon, String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFD5DF)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: const Color(0xFFE11D48)),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(message,
+                  style:
+                      const TextStyle(color: Color(0xFF6F4B57), fontSize: 13))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentBottomActionV4() {
+    final automatic = _paymentMode == 'auto';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 14),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+              color: Color(0x1A881337), blurRadius: 18, offset: Offset(0, -5)),
+        ],
+      ),
+      child: SizedBox(
+        height: 50,
+        child: FilledButton.icon(
+          onPressed: automatic
+              ? (!_loggedIn || _creatingPayment
+                  ? null
+                  : _orderNo == null
+                      ? _startOnlinePayment
+                      : _checkAndShowStatus)
+              : (_manualModeAvailable ? _confirmManualPaymentV4 : null),
+          icon: _creatingPayment && automatic
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      color: Colors.white, strokeWidth: 2),
+                )
+              : Icon(automatic
+                  ? Icons.open_in_browser_rounded
+                  : Icons.check_circle_outline_rounded),
+          label: Text(
+            automatic
+                ? (_orderNo == null
+                    ? '\u786e\u8ba4\u5e76\u524d\u5f80\u652f\u4ed8'
+                    : '\u68c0\u67e5\u8ba2\u5355\u5230\u8d26\u72b6\u6001')
+                : '\u6211\u5df2\u652f\u4ed8\u5b8c\u6bd5',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFE11D48),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmManualPaymentV4() async {
+    final qrUrl = _selectedManualConfig?.qrCode ?? '';
+    final saved = qrUrl.isNotEmpty && _savedManualQrUrls.contains(qrUrl);
+    if (!saved) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Color(0xFFE11D48)),
+        ),
+      );
+      await Future<void>.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Center(child: Text('\u786e\u8ba4\u5f39\u6846')),
+          content:
+              const Text('\u8bf7\u8054\u7cfb\u5ba2\u670d\u6838\u5b9e\u3002'),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _openContact();
+              },
+              child: const Text('\u8054\u7cfb\u5ba2\u670d'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('\u518d\u6b21\u786e\u8ba4'),
+            content: const Text(
+                '\u8bf7\u786e\u8ba4\u5df2\u6309\u9875\u9762\u91d1\u989d\u5b8c\u6210\u4ed8\u6b3e\u3002'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('\u53d6\u6d88'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('\u786e\u8ba4\u5df2\u652f\u4ed8'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('\u5df2\u8bb0\u5f55\u4ed8\u6b3e\u786e\u8ba4')),
+    );
+  }
+
   Widget _buildInfoRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -1390,6 +3612,87 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               color: Color(0xFF881337),
               fontSize: 13,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OnlinePaymentStep extends StatelessWidget {
+  const _OnlinePaymentStep({
+    required this.number,
+    required this.title,
+    required this.description,
+    this.last = false,
+  });
+
+  final String number;
+  final String title;
+  final String description;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE11D48),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  number,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              if (!last)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    color: const Color(0xFFF2D8DF),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: last ? 0 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Color(0xFF4A202C),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: Color(0xFF92727B),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

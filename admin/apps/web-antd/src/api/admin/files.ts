@@ -8,3 +8,8 @@ export const uploadPaymentImage = (data: FormData) =>
   requestClient.post<UploadedFile>('/files/payment-image', data, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
+
+export const uploadDiscoveryImage = (data: FormData) =>
+  requestClient.post<UploadedFile>('/files/discovery-image', data, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });

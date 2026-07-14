@@ -86,21 +86,83 @@ class _AuthPageState extends State<AuthPage> {
               inviteCode: inviteCode,
             )
           : await _auth.login(username: username, password: password);
-      print(
-          '[AUTH_PAGE] submit success mode=${register ? "register" : "login"} username=$username');
-      if (!mounted) return;
-
-      // 如果有回调，调用回调；否则返回session
-      if (widget.onLoginSuccess != null) {
-        widget.onLoginSuccess!(session);
-        Navigator.of(context).pop();
-      } else {
-        Navigator.of(context).pop(session);
-      }
+      _completeLogin(session, register: register, username: username);
     } catch (error) {
       print(
           '[AUTH_PAGE] submit error mode=${register ? "register" : "login"} username=$username error=$error');
-      final text = error.toString();
+      if (!register && error is AuthException && error.code == 1005) {
+        final maxDevices =
+            int.tryParse(error.data['max_devices']?.toString() ?? '') ?? 1;
+        final loggedInDevices =
+            int.tryParse(error.data['logged_in_devices']?.toString() ?? '') ??
+                maxDevices;
+        final confirmed = await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('设备登录确认'),
+                content: Text(
+                  '当前套餐最多允许 $maxDevices 台设备登录，现已登录 $loggedInDevices 台。\n\n继续登录会自动退出超出限制的其他设备，是否确认登录？',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('确认登录'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+        if (!confirmed || !mounted) return;
+
+        try {
+          final session = await _auth.login(
+            username: username,
+            password: password,
+            forceLogin: true,
+          );
+          _completeLogin(session, register: false, username: username);
+        } catch (forceError) {
+          if (mounted) _showAuthError(forceError, register: false);
+        }
+        return;
+      }
+      _showAuthError(error, register: register);
+    } finally {
+      print(
+          '[AUTH_PAGE] submit finish mode=${register ? "register" : "login"} username=$username mounted=$mounted');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _completeLogin(
+    AuthSession session, {
+    required bool register,
+    required String username,
+  }) {
+    print(
+        '[AUTH_PAGE] submit success mode=${register ? "register" : "login"} username=$username');
+    if (!mounted) return;
+    if (widget.onLoginSuccess != null) {
+      widget.onLoginSuccess!(session);
+      Navigator.of(context).pop();
+    } else {
+      Navigator.of(context).pop(session);
+    }
+  }
+
+  void _showAuthError(Object error, {required bool register}) {
+      final rawText = error.toString().replaceFirst(
+            RegExp(r'^(Exception|Error):\s*'),
+            '',
+          );
+      final text = RegExp(r'[\u4e00-\u9fff]').hasMatch(rawText)
+          ? rawText
+          : (register ? '\u6ce8\u518c\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5' : '\u767b\u5f55\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5');
       setState(() {
         if (text.contains('用户名') ||
             text.contains('账号') ||
@@ -125,11 +187,6 @@ class _AuthPageState extends State<AuthPage> {
           text.contains('3 个')) {
         if (mounted) _openContact();
       }
-    } finally {
-      print(
-          '[AUTH_PAGE] submit finish mode=${register ? "register" : "login"} username=$username mounted=$mounted');
-      if (mounted) setState(() => _loading = false);
-    }
   }
 
   void _openContact() {

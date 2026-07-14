@@ -24,6 +24,15 @@ func Fail(c *gin.Context, code int, msg string) {
 	})
 }
 
+// FailData 返回附带结构化数据的业务错误。
+func FailData(c *gin.Context, code int, msg string, data interface{}) {
+	c.JSON(http.StatusOK, gin.H{
+		"code":    code,
+		"message": msg,
+		"data":    data,
+	})
+}
+
 // FailStatus 带 HTTP 状态码的失败响应
 func FailStatus(c *gin.Context, httpStatus int, code int, msg string) {
 	c.JSON(httpStatus, gin.H{
