@@ -36,9 +36,9 @@ class PaymentPageV3 extends StatefulWidget {
 }
 
 class _PaymentPageV3State extends State<PaymentPageV3> {
-  String _selectedChannel = 'alipay'; // alipay, wechat, qq
+  String _selectedChannel = 'wechat'; // wechat, alipay, qq, usdt
   String _paymentMode = 'auto'; // auto, manual
-  String _selectedManualChannel = 'alipay'; // usdt, wechat, alipay, qq
+  String _selectedManualChannel = 'wechat'; // usdt, wechat, alipay, qq
   String _selectedUsdtNetwork = 'bep20'; // trc20, bep20, erc20
 
   List<_PaymentConfig> _usdtConfigs = [];
@@ -129,16 +129,18 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
             _qqConfigs = configs.where((c) => c.type == 'qq').toList();
 
             if (_loggedIn) {
-              _selectedChannel = 'alipay';
+              _selectedChannel = _wechatConfigs.isNotEmpty
+                  ? 'wechat'
+                  : (_alipayConfigs.isNotEmpty ? 'alipay' : 'qq');
             } else if (_usdtConfigs.isNotEmpty) {
               final network = _usdtConfigs.first.type.replaceFirst('usdt_', '');
               if (network.isNotEmpty) _selectedUsdtNetwork = network;
             }
 
-            if (_alipayConfigs.isNotEmpty) {
-              _selectedManualChannel = 'alipay';
-            } else if (_wechatConfigs.isNotEmpty) {
+            if (_wechatConfigs.isNotEmpty) {
               _selectedManualChannel = 'wechat';
+            } else if (_alipayConfigs.isNotEmpty) {
+              _selectedManualChannel = 'alipay';
             } else if (_qqConfigs.isNotEmpty) {
               _selectedManualChannel = 'qq';
             } else if (_usdtConfigs.isNotEmpty) {
@@ -249,6 +251,149 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     } finally {
       client.close(force: true);
     }
+  }
+
+  Future<({bool ok, String message})> _notifyPaymentConfirmed() async {
+    if (!_loggedIn) {
+      return (ok: false, message: '请先登录后再确认付款');
+    }
+
+    final channel =
+        _paymentMode == 'manual' ? _selectedManualChannel : _selectedChannel;
+    final client = HttpClient();
+    try {
+      final request =
+          await client.postUrl(Uri.parse(kPaymentConfirmNotifyApiUrl));
+      request.headers.contentType = ContentType.json;
+      request.headers.set('Authorization', 'Bearer ${widget.token}');
+      request.write(jsonEncode({
+        'plan_id': widget.planId,
+        'billing_cycle': widget.billingCycle,
+        'pay_channel': channel,
+        'payment_mode': _paymentMode,
+      }));
+      final response = await request.close();
+      final body = await response.transform(utf8.decoder).join();
+      final decoded = jsonDecode(body) as Map<String, dynamic>;
+      final ok = response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          (decoded['code'] as num?)?.toInt() == 0;
+      if (ok) {
+        return (
+          ok: true,
+          message: _paymentMode == 'auto'
+              ? '已记录确认，正在跳转支付...'
+              : '套餐已开通，管理员将核实付款',
+        );
+      }
+      final message = decoded['message']?.toString().trim();
+      return (
+        ok: false,
+        message: message?.isNotEmpty == true ? message! : '开通失败，请稍后重试',
+      );
+    } catch (_) {
+      return (ok: false, message: '网络异常，开通失败，请稍后重试');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<void> _finishPaymentActivation(({bool ok, String message}) result) async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.message)),
+    );
+    if (result.ok) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      if (mounted) Navigator.of(context).pop(true);
+    }
+  }
+
+  Future<bool> _showPaymentSecondConfirm({
+    required String title,
+    required String content,
+    required String confirmText,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(title),
+            content: Text(content),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: Text(confirmText),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _handleAutoPaymentAction() async {
+    if (_orderNo != null) {
+      await _checkAndShowStatus();
+      return;
+    }
+    final confirmed = await _showPaymentSecondConfirm(
+      title: '再次确认',
+      content: '确认后将打开浏览器前往第三方支付，请按页面金额完成付款。',
+      confirmText: '确认前往支付',
+    );
+    if (!confirmed || !mounted) return;
+    final result = await _notifyPaymentConfirmed();
+    if (!mounted) return;
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+      return;
+    }
+    await _startOnlinePayment();
+  }
+
+  Future<void> _handleWindowsPaymentAction() async {
+    if (_paymentMode == 'manual' || _selectedChannel == 'usdt') {
+      await _confirmManualPaymentV4();
+      return;
+    }
+    await _handleAutoPaymentAction();
+  }
+
+  _PaymentConfig? _manualConfigForChannel(String channel) {
+    switch (channel) {
+      case 'wechat':
+        return _wechatConfigs.isNotEmpty ? _wechatConfigs.first : null;
+      case 'alipay':
+        return _alipayConfigs.isNotEmpty ? _alipayConfigs.first : null;
+      case 'qq':
+        return _qqConfigs.isNotEmpty ? _qqConfigs.first : null;
+      case 'usdt':
+        return _currentUsdtConfig;
+      default:
+        return null;
+    }
+  }
+
+  String? get _windowsPreviewQrUrl {
+    final channel =
+        _paymentMode == 'manual' ? _selectedManualChannel : _selectedChannel;
+    final config = _manualConfigForChannel(channel);
+    final qr = config?.qrCode ?? '';
+    return qr.isNotEmpty ? qr : null;
+  }
+
+  bool _channelHasAutoConfig(String channel) {
+    return switch (channel) {
+      'alipay' => _alipayConfigs.isNotEmpty,
+      'wechat' => _wechatConfigs.isNotEmpty,
+      'qq' => _qqConfigs.isNotEmpty,
+      _ => false,
+    };
   }
 
   Future<void> _checkAndShowStatus() async {
@@ -485,25 +630,26 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   }
 
   Widget _buildWindowsBody() {
+    final previewUrl = _windowsPreviewQrUrl;
+    final manualLike = _paymentMode == 'manual' || _selectedChannel == 'usdt';
     return PaymentPageWindowsLayout(
       leftContent: _buildWindowsLeftContentClean(),
-      previewTitle: _selectedPreviewTitleClean,
-      previewImageUrl: _selectedPreviewImageUrl,
-      onActionPressed: _creatingPayment
-          ? null
-          : (_selectedChannel == 'usdt'
-              ? _openContact
-              : _orderNo == null
-                  ? _startOnlinePayment
-                  : _checkAndShowStatus),
+      previewTitle: previewUrl != null
+          ? (_manualConfigForChannel(
+                    _paymentMode == 'manual'
+                        ? _selectedManualChannel
+                        : _selectedChannel,
+                  )?.label ??
+                  '收款二维码')
+          : _selectedPreviewTitleClean,
+      previewImageUrl: previewUrl,
+      onActionPressed: _creatingPayment ? null : _handleWindowsPaymentAction,
       actionLabel: _creatingPayment
           ? '正在创建订单...'
-          : _selectedChannel == 'usdt'
-              ? '完成支付后联系客服'
-              : _orderNo == null
-                  ? '前往在线支付'
-                  : '检查订单状态',
-      onlinePayment: _selectedChannel != 'usdt',
+          : manualLike
+              ? '我已支付完毕'
+              : (_orderNo == null ? '确认并前往支付' : '检查订单状态'),
+      onlinePayment: !manualLike && previewUrl == null,
     );
   }
 
@@ -610,18 +756,18 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                 children: [
                   Expanded(
                     child: _buildChannelCard(
-                      'alipay',
-                      '\u652f\u4ed8\u5b9d',
-                      'assets/images/contact/alipay.png',
+                      'wechat',
+                      '\u5fae\u4fe1\u652f\u4ed8',
+                      'assets/images/contact/wechat.png',
                       true,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildChannelCard(
-                      'wechat',
-                      '\u5fae\u4fe1\u652f\u4ed8',
-                      'assets/images/contact/wechat.png',
+                      'alipay',
+                      '\u652f\u4ed8\u5b9d',
+                      'assets/images/contact/alipay.png',
                       true,
                     ),
                   ),
@@ -644,6 +790,27 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                height: 76,
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1F2),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFFFD5DF)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildWindowsModeTab('auto', '自动支付'),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: _buildWindowsModeTab('manual', '手动支付'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
               if (_selectedChannel == 'usdt' && _usdtConfigs.isNotEmpty) ...[
@@ -671,7 +838,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               if (_selectedChannel == 'wechat' ||
                   _selectedChannel == 'alipay' ||
                   _selectedChannel == 'qq')
-                _buildOnlinePaymentInfo(),
+                _paymentMode == 'manual' &&
+                        _manualConfigForChannel(_selectedChannel) != null
+                    ? _buildWechatAlipayInfo(
+                        _manualConfigForChannel(_selectedChannel)!,
+                      )
+                    : _buildOnlinePaymentInfo(),
             ],
           ),
         ),
@@ -683,6 +855,32 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     return _buildWindowsLeftContentClean();
   }
 
+  Widget _buildWindowsModeTab(String value, String label) {
+    final selected = _paymentMode == value;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => setState(() => _paymentMode = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFFE11D48) : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.white : const Color(0xFF881337),
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildChannelCard(
       String value, String label, String iconAsset, bool enabled) {
     final isSelected = _selectedChannel == value;
@@ -690,6 +888,11 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       onTap: enabled
           ? () => setState(() {
                 _selectedChannel = value;
+                if (value != 'usdt') {
+                  _selectedManualChannel = value;
+                } else {
+                  _selectedManualChannel = 'usdt';
+                }
                 _orderNo = null;
               })
           : null,
@@ -1552,9 +1755,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     if (!_autoModeAvailable) {
       return _buildAutoUnavailableTip();
     }
-    final selectedHasConfig = _selectedChannel == 'alipay'
-        ? _alipayConfigs.isNotEmpty
-        : _wechatConfigs.isNotEmpty;
+    final selectedHasConfig = _channelHasAutoConfig(_selectedChannel);
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
       children: [
@@ -1677,12 +1878,6 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
           runSpacing: 10,
           children: [
             _buildManualChannelCard(
-              keyValue: 'usdt',
-              title: 'USDT',
-              assetPath: 'assets/images/contact/USDT.png',
-              enabled: _usdtConfigs.isNotEmpty,
-            ),
-            _buildManualChannelCard(
               keyValue: 'wechat',
               title: '微信',
               assetPath: 'assets/images/contact/wechat.png',
@@ -1699,6 +1894,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               title: 'QQ',
               assetPath: 'assets/images/contact/qq.png',
               enabled: _qqConfigs.isNotEmpty,
+            ),
+            _buildManualChannelCard(
+              keyValue: 'usdt',
+              title: 'USDT',
+              assetPath: 'assets/images/contact/USDT.png',
+              enabled: _usdtConfigs.isNotEmpty,
             ),
           ],
         ),
@@ -2146,9 +2347,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       );
     }
 
-    final selectedHasConfig = _selectedChannel == 'alipay'
-        ? _alipayConfigs.isNotEmpty
-        : _wechatConfigs.isNotEmpty;
+    final selectedHasConfig = _channelHasAutoConfig(_selectedChannel);
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 22),
       children: [
@@ -2418,15 +2617,6 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
           children: [
             Expanded(
               child: _buildManualChannelV2(
-                value: 'usdt',
-                label: 'USDT',
-                asset: 'assets/images/contact/USDT.png',
-                enabled: _usdtConfigs.isNotEmpty,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildManualChannelV2(
                 value: 'wechat',
                 label: '微信',
                 asset: 'assets/images/contact/wechat.png',
@@ -2449,6 +2639,15 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                 label: 'QQ',
                 asset: 'assets/images/contact/qq.png',
                 enabled: _qqConfigs.isNotEmpty,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _buildManualChannelV2(
+                value: 'usdt',
+                label: 'USDT',
+                asset: 'assets/images/contact/USDT.png',
+                enabled: _usdtConfigs.isNotEmpty,
               ),
             ),
           ],
@@ -2857,12 +3056,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     return Row(
       children: [
         Expanded(
-            child: _buildChannelItemV3('alipay', '\u652f\u4ed8\u5b9d',
-                'assets/images/contact/alipay.png', automatic)),
-        const SizedBox(width: 7),
-        Expanded(
             child: _buildChannelItemV3('wechat', '\u5fae\u4fe1',
                 'assets/images/contact/wechat.png', automatic)),
+        const SizedBox(width: 7),
+        Expanded(
+            child: _buildChannelItemV3('alipay', '\u652f\u4ed8\u5b9d',
+                'assets/images/contact/alipay.png', automatic)),
         const SizedBox(width: 7),
         Expanded(
             child: _buildChannelItemV3(
@@ -3246,12 +3445,12 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
         Row(
           children: [
             Expanded(
-                child: _buildChannelItemV3('alipay', '\u652f\u4ed8\u5b9d',
-                    'assets/images/contact/alipay.png', true)),
-            const SizedBox(width: 8),
-            Expanded(
                 child: _buildChannelItemV3('wechat', '\u5fae\u4fe1',
                     'assets/images/contact/wechat.png', true)),
+            const SizedBox(width: 8),
+            Expanded(
+                child: _buildChannelItemV3('alipay', '\u652f\u4ed8\u5b9d',
+                    'assets/images/contact/alipay.png', true)),
             const SizedBox(width: 8),
             Expanded(
                 child: _buildChannelItemV3(
@@ -3505,7 +3704,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
               ? (!_loggedIn || _creatingPayment
                   ? null
                   : _orderNo == null
-                      ? _startOnlinePayment
+                      ? _handleAutoPaymentAction
                       : _checkAndShowStatus)
               : (_manualModeAvailable ? _confirmManualPaymentV4 : null),
           icon: _creatingPayment && automatic
@@ -3521,9 +3720,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
           label: Text(
             automatic
                 ? (_orderNo == null
-                    ? '\u786e\u8ba4\u5e76\u524d\u5f80\u652f\u4ed8'
-                    : '\u68c0\u67e5\u8ba2\u5355\u5230\u8d26\u72b6\u6001')
-                : '\u6211\u5df2\u652f\u4ed8\u5b8c\u6bd5',
+                    ? '确认并前往支付'
+                    : '检查订单到账状态')
+                : '我已支付完毕',
             style: const TextStyle(fontWeight: FontWeight.w900),
           ),
           style: FilledButton.styleFrom(
@@ -3537,63 +3736,28 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   }
 
   Future<void> _confirmManualPaymentV4() async {
-    final qrUrl = _selectedManualConfig?.qrCode ?? '';
-    final saved = qrUrl.isNotEmpty && _savedManualQrUrls.contains(qrUrl);
-    if (!saved) {
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(
-          child: CircularProgressIndicator(color: Color(0xFFE11D48)),
-        ),
-      );
-      await Future<void>.delayed(const Duration(seconds: 2));
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Center(child: Text('\u786e\u8ba4\u5f39\u6846')),
-          content:
-              const Text('\u8bf7\u8054\u7cfb\u5ba2\u670d\u6838\u5b9e\u3002'),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                _openContact();
-              },
-              child: const Text('\u8054\u7cfb\u5ba2\u670d'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
-            title: const Text('\u518d\u6b21\u786e\u8ba4'),
+            title: const Text('再次确认'),
             content: const Text(
-                '\u8bf7\u786e\u8ba4\u5df2\u6309\u9875\u9762\u91d1\u989d\u5b8c\u6210\u4ed8\u6b3e\u3002'),
+                '确认后将立即开通套餐时长与流量，管理员会核实您的付款情况。'),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('\u53d6\u6d88'),
+                child: const Text('取消'),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: const Text('\u786e\u8ba4\u5df2\u652f\u4ed8'),
+                child: const Text('确认已支付'),
               ),
             ],
           ),
         ) ??
         false;
     if (!confirmed || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('\u5df2\u8bb0\u5f55\u4ed8\u6b3e\u786e\u8ba4')),
-    );
+    final result = await _notifyPaymentConfirmed();
+    await _finishPaymentActivation(result);
   }
 
   Widget _buildInfoRow(String label, String value) {

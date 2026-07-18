@@ -4,7 +4,15 @@ import 'dart:io';
 import '../models/vpn_node.dart';
 
 class NodeSpeedTester {
-  const NodeSpeedTester();
+  const NodeSpeedTester({
+    this.connectTimeout = const Duration(milliseconds: 1800),
+    this.maxNodesToTest = 24,
+    this.maxConcurrency = 16,
+  });
+
+  final Duration connectTimeout;
+  final int maxNodesToTest;
+  final int maxConcurrency;
 
   /// 测试单个节点的延迟
   Future<int?> testNode(VpnNode node) async {
@@ -12,65 +20,78 @@ class NodeSpeedTester {
       final address = node.address;
       if (address.isEmpty) return null;
 
-      // 提取主机名和端口
       final uri = Uri.tryParse('tcp://$address');
       if (uri == null) return null;
 
       final host = uri.host.isNotEmpty ? uri.host : address.split(':').first;
       final port = uri.hasPort ? uri.port : 443;
 
-      // TCP 连接测速
       final stopwatch = Stopwatch()..start();
-      
+
       Socket? socket;
       try {
         socket = await Socket.connect(
           host,
           port,
-          timeout: const Duration(seconds: 5),
+          timeout: connectTimeout,
         );
         stopwatch.stop();
         return stopwatch.elapsedMilliseconds;
       } finally {
         socket?.destroy();
       }
-    } catch (e) {
-      print('[SPEED_TEST] ${node.name} failed: $e');
+    } catch (_) {
       return null;
     }
   }
 
-  /// 批量测试所有节点并返回排序后的列表
+  /// 批量测试节点并返回排序后的列表
   Future<List<VpnNode>> testAndSortNodes(List<VpnNode> nodes) async {
     if (nodes.isEmpty) return nodes;
 
-    print('[SPEED_TEST] 开始测速 ${nodes.length} 个节点');
+    final targets = nodes.take(maxNodesToTest).toList();
+    final rest = nodes.skip(maxNodesToTest).toList();
+    final tested = await _testInParallel(targets);
+    return _sortNodes([...tested, ...rest]);
+  }
 
-    // 并发测试所有节点（最多同时测 10 个）
-    final results = <VpnNode>[];
-    final batchSize = 10;
-    
-    for (var i = 0; i < nodes.length; i += batchSize) {
-      final batch = nodes.skip(i).take(batchSize).toList();
-      final batchResults = await Future.wait(
-        batch.map((node) async {
-          final latency = await testNode(node);
-          return node.copyWith(latency: latency);
-        }),
-      );
-      results.addAll(batchResults);
+  Future<List<VpnNode>> _testInParallel(List<VpnNode> nodes) async {
+    if (nodes.isEmpty) return nodes;
+
+    final results = List<VpnNode?>.filled(nodes.length, null);
+    var nextIndex = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final index = nextIndex;
+        nextIndex += 1;
+        if (index >= nodes.length) return;
+
+        final latency = await testNode(nodes[index]);
+        results[index] = nodes[index].copyWith(latency: latency);
+      }
     }
 
-    // 按延迟排序：有延迟的在前，延迟小的在前，无延迟的在后
-    results.sort((a, b) {
+    final workers = List<Future<void>>.generate(
+      maxConcurrency.clamp(1, nodes.length),
+      (_) => worker(),
+    );
+    await Future.wait(workers);
+
+    return [
+      for (final node in results)
+        if (node != null) node,
+    ];
+  }
+
+  List<VpnNode> _sortNodes(List<VpnNode> nodes) {
+    final sorted = [...nodes];
+    sorted.sort((a, b) {
       if (a.latency == null && b.latency == null) return 0;
       if (a.latency == null) return 1;
       if (b.latency == null) return -1;
       return a.latency!.compareTo(b.latency!);
     });
-
-    print('[SPEED_TEST] 测速完成，最快: ${results.first.name} (${results.first.latency}ms)');
-    
-    return results;
+    return sorted;
   }
 }

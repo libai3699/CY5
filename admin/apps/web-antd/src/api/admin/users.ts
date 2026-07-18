@@ -40,7 +40,15 @@ export const getUser = (id: number) =>
 export const createUser = (data: { username: string; password: string; phone?: string; free_limit_seconds?: number }) =>
   requestClient.post<User>('/users', data);
 
-export const updateUser = (id: number, data: { status?: number; phone?: string; password?: string; free_used_seconds?: number; free_limit_seconds?: number }) =>
+export const updateUser = (id: number, data: {
+  status?: number;
+  phone?: string;
+  password?: string;
+  free_used_seconds?: number;
+  free_limit_seconds?: number;
+  remaining_seconds?: number;
+  traffic_remaining_bytes?: number;
+}) =>
   requestClient.put(`/users/${id}`, data);
 
 export const deleteUser = (id: number) =>

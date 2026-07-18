@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'flavor_config.dart';
-import 'pages/vpn_home/vpn_home_page.dart';
+import 'pages/splash_page.dart';
 
 class YuexiaVpnApp extends StatelessWidget {
   const YuexiaVpnApp({super.key});
@@ -18,7 +18,7 @@ class YuexiaVpnApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const VpnHomePage(),
+      home: const SplashPage(),
     );
   }
 }

@@ -87,6 +87,7 @@ func GetUserStatus(c *gin.Context) {
 	println("[STATUS] ========== 状态查询完成 ==========")
 
 	handler.OK(c, gin.H{
+		"has_plan":            hasPlan,
 		"plan_level":          planLevel,
 		"remaining_seconds":   remainingSeconds,
 		"remaining_time_text": formatRemainingTime(remainingSeconds),

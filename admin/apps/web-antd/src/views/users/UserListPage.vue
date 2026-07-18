@@ -13,7 +13,19 @@ let refreshTimer: number | undefined;
 const dialogVisible = ref(false);
 const isEdit = ref(false);
 const editId = ref(0);
-const form = reactive({ username: '', password: '', phone: '', status: 1, free_used_seconds: 0, free_limit_seconds: 2700 });
+const form = reactive({
+  username: '',
+  password: '',
+  phone: '',
+  status: 1,
+  free_used_seconds: 0,
+  free_limit_seconds: 2700,
+  remaining_days: 0,
+  remaining_hours: 0,
+  remaining_minutes: 0,
+  remaining_traffic_gb: 0,
+  unlimited_traffic: false,
+});
 
 const durationDialogVisible = ref(false);
 const durationUserId = ref(0);
@@ -59,16 +71,84 @@ async function load() {
 
 function handleSearch() { page.current = 1; load(); }
 
+const editSnapshot = ref({
+  remainingSeconds: 0,
+  trafficRemainingBytes: 0 as number | null,
+});
+
+function calcRemainingSeconds(expiredAt: string | null) {
+  if (!expiredAt) return -1;
+  return Math.max(0, Math.floor((new Date(expiredAt).getTime() - Date.now()) / 1000));
+}
+
+function calcRemainingTrafficBytes(usedBytes: number, limitBytes: number | null) {
+  if (limitBytes === null || limitBytes === undefined) return null;
+  return Math.max(0, limitBytes - usedBytes);
+}
+
+function calcRemainingParts(expiredAt: string | null) {
+  if (!expiredAt) {
+    return { days: 0, hours: 0, minutes: 0 };
+  }
+  const diff = Math.max(0, Math.floor((new Date(expiredAt).getTime() - Date.now()) / 1000));
+  return {
+    days: Math.floor(diff / 86400),
+    hours: Math.floor((diff % 86400) / 3600),
+    minutes: Math.floor((diff % 3600) / 60),
+  };
+}
+
+function calcRemainingTrafficGB(usedBytes: number, limitBytes: number | null) {
+  if (limitBytes === null || limitBytes === undefined) {
+    return { unlimited: true, gb: 0 };
+  }
+  const left = Math.max(0, limitBytes - usedBytes);
+  return {
+    unlimited: false,
+    gb: Number((left / 1024 / 1024 / 1024).toFixed(2)),
+  };
+}
+
 function openCreate() {
   isEdit.value = false;
-  Object.assign(form, { username: '', password: '', phone: '', status: 1, free_used_seconds: 0, free_limit_seconds: 2700 });
+  Object.assign(form, {
+    username: '',
+    password: '',
+    phone: '',
+    status: 1,
+    free_used_seconds: 0,
+    free_limit_seconds: 2700,
+    remaining_days: 0,
+    remaining_hours: 0,
+    remaining_minutes: 0,
+    remaining_traffic_gb: 0,
+    unlimited_traffic: false,
+  });
   dialogVisible.value = true;
 }
 
 function openEdit(row: User) {
   isEdit.value = true;
   editId.value = row.id;
-  Object.assign(form, { username: row.username, password: '', phone: row.phone || '', status: row.status, free_used_seconds: row.free_used_seconds, free_limit_seconds: row.free_limit_seconds });
+  const remaining = calcRemainingParts(row.plan_expired_at);
+  const traffic = calcRemainingTrafficGB(row.traffic_used_bytes, row.traffic_limit_bytes);
+  editSnapshot.value = {
+    remainingSeconds: calcRemainingSeconds(row.plan_expired_at),
+    trafficRemainingBytes: calcRemainingTrafficBytes(row.traffic_used_bytes, row.traffic_limit_bytes),
+  };
+  Object.assign(form, {
+    username: row.username,
+    password: '',
+    phone: row.phone || '',
+    status: row.status,
+    free_used_seconds: row.free_used_seconds,
+    free_limit_seconds: row.free_limit_seconds,
+    remaining_days: remaining.days,
+    remaining_hours: remaining.hours,
+    remaining_minutes: remaining.minutes,
+    remaining_traffic_gb: traffic.gb,
+    unlimited_traffic: traffic.unlimited,
+  });
   dialogVisible.value = true;
 }
 
@@ -78,7 +158,33 @@ async function handleSubmit() {
     await createUser({ username: form.username, password: form.password, phone: form.phone, free_limit_seconds: form.free_limit_seconds });
     ElMessage.success('创建成功');
   } else {
-    const data: any = { status: form.status, phone: form.phone, free_used_seconds: form.free_used_seconds, free_limit_seconds: form.free_limit_seconds };
+    const remainingSeconds =
+      form.remaining_days * 86400 +
+      form.remaining_hours * 3600 +
+      form.remaining_minutes * 60;
+    const trafficRemainingBytes = form.unlimited_traffic
+      ? -1
+      : Math.round(form.remaining_traffic_gb * 1024 * 1024 * 1024);
+    const snapshotTraffic = editSnapshot.value.trafficRemainingBytes === null
+      ? -1
+      : editSnapshot.value.trafficRemainingBytes;
+
+    const data: any = {
+      status: form.status,
+      phone: form.phone,
+      free_used_seconds: form.free_used_seconds,
+      free_limit_seconds: form.free_limit_seconds,
+    };
+
+    const shouldUpdateRemaining =
+      !(editSnapshot.value.remainingSeconds === -1 && remainingSeconds === 0) &&
+      remainingSeconds !== editSnapshot.value.remainingSeconds;
+    if (shouldUpdateRemaining) {
+      data.remaining_seconds = remainingSeconds;
+    }
+    if (trafficRemainingBytes !== snapshotTraffic) {
+      data.traffic_remaining_bytes = trafficRemainingBytes;
+    }
     if (form.password) data.password = form.password;
     await updateUser(editId.value, data);
     ElMessage.success('更新成功');
@@ -265,7 +371,7 @@ onUnmounted(() => {
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="480px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑用户' : '新增用户'" width="560px">
       <el-form :model="form" label-width="140px">
         <el-form-item label="用户名" required>
           <el-input v-model="form.username" :disabled="isEdit" />
@@ -281,6 +387,29 @@ onUnmounted(() => {
             <el-radio :value="1">正常</el-radio>
             <el-radio :value="0">禁用</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="isEdit" label="剩余时长">
+          <div style="display:flex;gap:8px;width:100%">
+            <el-input-number v-model="form.remaining_days" :min="0" :max="3650" style="flex:1" />
+            <span>天</span>
+            <el-input-number v-model="form.remaining_hours" :min="0" :max="23" style="flex:1" />
+            <span>时</span>
+            <el-input-number v-model="form.remaining_minutes" :min="0" :max="59" style="flex:1" />
+            <span>分</span>
+          </div>
+        </el-form-item>
+        <el-form-item v-if="isEdit" label="剩余流量">
+          <div style="display:flex;align-items:center;gap:12px;width:100%">
+            <el-input-number
+              v-model="form.remaining_traffic_gb"
+              :min="0"
+              :max="10240"
+              :disabled="form.unlimited_traffic"
+              style="flex:1"
+            />
+            <span>GB</span>
+            <el-checkbox v-model="form.unlimited_traffic">不限流量</el-checkbox>
+          </div>
         </el-form-item>
         <el-form-item v-if="isEdit" label="已用免费时长(秒)">
           <el-input-number v-model="form.free_used_seconds" :min="0" style="width:100%" />

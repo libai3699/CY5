@@ -32,6 +32,7 @@ func Setup(r *gin.Engine) {
 		publicGroup.GET("/payment/notify", app.EPayNotify)
 		publicGroup.POST("/payment/notify", app.EPayNotify)
 		publicGroup.GET("/payment/return", app.EPayReturn)
+		publicGroup.POST("/payment/confirm-notify", middleware.IPRateLimit("payment_confirm_notify", 30, time.Minute), middleware.AuthRequired(), app.NotifyPaymentConfirm)
 		publicGroup.GET("/contact", app.GetContactConfig)
 		publicGroup.GET("/user/notices", middleware.AuthRequired(), app.GetUserNotices)
 		publicGroup.GET("/user/status", middleware.AuthRequired(), app.GetUserStatus)

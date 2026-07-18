@@ -12,6 +12,7 @@ class VpnControlPanel extends StatelessWidget {
     required this.hasNodes,
     required this.isBusy,
     required this.isLoadingNodes,
+    required this.isSpeedTesting,
     required this.isLoadingStatus,
     required this.message,
     required this.node,
@@ -26,6 +27,7 @@ class VpnControlPanel extends StatelessWidget {
   final bool hasNodes;
   final bool isBusy;
   final bool isLoadingNodes;
+  final bool isSpeedTesting;
   final bool isLoadingStatus;
   final String? message;
   final VpnNode? node;
@@ -42,7 +44,8 @@ class VpnControlPanel extends StatelessWidget {
     final screenHeight = MediaQuery.sizeOf(context).height;
     final compact = screenHeight < 720;
     final statusText = switch (status) {
-      VpnStatus.disconnected => isLoadingNodes ? '线路测速中' : '点击连接',
+      VpnStatus.disconnected =>
+        isLoadingNodes ? '线路加载中' : '点击连接',
       VpnStatus.connecting => '连接中',
       VpnStatus.connected => '点击关闭',
     };
@@ -104,10 +107,24 @@ class VpnControlPanel extends StatelessWidget {
             if (isLoadingNodes)
               const _NodeSelectorSkeleton()
             else if (node != null)
-              NodeSelector(
-                node: node!,
-                enabled: !connected && !isBusy,
-                onPressed: onNodePressed,
+              Column(
+                children: [
+                  NodeSelector(
+                    node: node!,
+                    enabled: !connected && !isBusy,
+                    onPressed: onNodePressed,
+                  ),
+                  if (isSpeedTesting) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '后台优化线路中',
+                      style: TextStyle(
+                        color: const Color(0xFF9F1239).withOpacity(0.72),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ],
               )
             else
               Column(

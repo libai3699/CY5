@@ -171,11 +171,13 @@ func CreateUser(c *gin.Context) {
 }
 
 type updateUserReq struct {
-	Status           *int8  `json:"status"`
-	Phone            string `json:"phone"`
-	Password         string `json:"password"`
-	FreeUsedSeconds  *int   `json:"free_used_seconds"`
-	FreeLimitSeconds *int   `json:"free_limit_seconds"`
+	Status                *int8  `json:"status"`
+	Phone                 string `json:"phone"`
+	Password              string `json:"password"`
+	FreeUsedSeconds       *int   `json:"free_used_seconds"`
+	FreeLimitSeconds      *int   `json:"free_limit_seconds"`
+	RemainingSeconds      *int64 `json:"remaining_seconds"`       // -1=未开通, 0=立即到期, >0=剩余秒数
+	TrafficRemainingBytes *int64 `json:"traffic_remaining_bytes"` // -1=不限流量
 }
 
 // UpdateUser 编辑用户
@@ -212,8 +214,44 @@ func UpdateUser(c *gin.Context) {
 			updates["password"] = string(hash)
 		}
 	}
+	if req.RemainingSeconds != nil {
+		sec := *req.RemainingSeconds
+		switch {
+		case sec < 0:
+			if err := database.DB.Model(&user).Update("plan_expired_at", nil).Error; err != nil {
+				handler.Fail(c, 500, "更新时长失败")
+				return
+			}
+		case sec == 0:
+			updates["plan_expired_at"] = time.Now()
+		default:
+			updates["plan_expired_at"] = time.Now().Add(time.Duration(sec) * time.Second)
+		}
+	}
+	if req.TrafficRemainingBytes != nil {
+		if *req.TrafficRemainingBytes < 0 {
+			if err := database.DB.Model(&user).Update("traffic_limit_bytes", nil).Error; err != nil {
+				handler.Fail(c, 500, "更新流量失败")
+				return
+			}
+		} else {
+			updates["traffic_limit_bytes"] = user.TrafficUsedBytes + *req.TrafficRemainingBytes
+		}
+	}
+
+	if len(updates) == 0 {
+		handler.OK(c, gin.H{"msg": "更新成功"})
+		return
+	}
 
 	database.DB.Model(&user).Updates(updates)
+
+	if req.RemainingSeconds != nil || req.TrafficRemainingBytes != nil {
+		ws.Notices.PushEvent(user.ID, "status_update", gin.H{
+			"msg": "管理员已更新您的时长/流量",
+		})
+	}
+
 	handler.OK(c, gin.H{"msg": "更新成功"})
 }
 

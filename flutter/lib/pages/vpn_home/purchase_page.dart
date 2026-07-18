@@ -758,8 +758,8 @@ class _PurchasePageState extends State<PurchasePage> {
         planName: selected.name,
         planPrice: selected.price,
         cycle: _cycle.label);
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => PaymentPageV3(
           planName: selected.name,
           totalPrice: total,
@@ -769,7 +769,11 @@ class _PurchasePageState extends State<PurchasePage> {
           token: widget.token,
         ),
       ),
-    );
+    ).then((activated) {
+      if (activated == true && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    });
   }
 }
 

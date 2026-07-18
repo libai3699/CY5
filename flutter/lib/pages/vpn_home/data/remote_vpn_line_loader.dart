@@ -14,6 +14,11 @@ class RemoteVpnLineLoader {
 
   static const VpnSubscriptionLoader _subscriptionLoader = VpnSubscriptionLoader();
 
+  /// 读取本地缓存，启动时可立即展示线路。
+  Future<List<VpnNode>> loadCached() async {
+    return _loadFromCacheOrEmpty();
+  }
+
   Future<List<VpnNode>> load() async {
     try {
       final node = await _fetchRemoteLine();

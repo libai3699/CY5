@@ -62,6 +62,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   AuthSession? _session;
   int _quoteKey = 0; // 每次下拉刷新递增，强制 QuoteCard 重建
   AppStatus _appStatus = const AppStatus(
+    hasPlan: false,
     planLevel: '免费体验',
     remainingSeconds: 0,
     remainingTimeText: '未登录',
@@ -71,6 +72,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
   VpnStatus _status = VpnStatus.disconnected;
   String? _message;
   bool _isLoadingNodes = true;
+  bool _isSpeedTesting = false;
   bool _isRefreshingLines = false;
   Timer? _appStatusRefreshTimer;
   Timer? _heartbeatTimer;
@@ -95,13 +97,28 @@ class _VpnHomePageState extends State<VpnHomePage> {
   bool get _isConnected => _status == VpnStatus.connected;
   bool get _isConnecting => _status == VpnStatus.connecting;
   bool get _hasActivePlan =>
-      _appStatus.planLevel != '免费体验' && _appStatus.remainingSeconds > 0;
+      _appStatus.hasPlan && _appStatus.remainingSeconds > 0;
 
-  bool get _hasTrafficAvailable {
-    if (_appStatus.planLevel == '免费体验' && _appStatus.remainingSeconds > 0) {
+  String get _resolvedTrafficRemaining {
+    final text = _appStatus.trafficRemaining.trim();
+    if (!_appStatus.hasPlan &&
+        _appStatus.planLevel == '免费体验' &&
+        (text == '0G' || text == '0GB' || text == '0 GB')) {
+      return '无限流量';
+    }
+    return text;
+  }
+
+  bool _trafficAvailableFor(AppStatus status) {
+    if (!status.hasPlan && status.remainingSeconds > 0) {
       return true;
     }
-    final text = _appStatus.trafficRemaining.trim().toLowerCase();
+    final text = status.trafficRemaining.trim().toLowerCase();
+    if (!status.hasPlan &&
+        status.planLevel == '免费体验' &&
+        (text == '0g' || text == '0gb' || text == '0 gb')) {
+      return true;
+    }
     if (text.contains('不限') || text.contains('无限') || text == 'unlimited') {
       return true;
     }
@@ -109,8 +126,15 @@ class _VpnHomePageState extends State<VpnHomePage> {
     return match != null && (double.tryParse(match.group(1)!) ?? 0) > 0;
   }
 
-  bool get _canUseVpn =>
-      _appStatus.remainingSeconds > 0 && _hasTrafficAvailable;
+  bool _canUseStatus(AppStatus status) {
+    if (status.remainingSeconds <= 0) return false;
+    if (!status.hasPlan) return true;
+    return _trafficAvailableFor(status);
+  }
+
+  bool get _hasTrafficAvailable => _trafficAvailableFor(_appStatus);
+
+  bool get _canUseVpn => _canUseStatus(_appStatus);
 
   @override
   void initState() {
@@ -249,10 +273,14 @@ class _VpnHomePageState extends State<VpnHomePage> {
           ? await _appLoader.loadStatus()
           : await _appLoader.loadUserStatus(token);
       if (!mounted) return statusLoaded;
+      final canUse = _canUseStatus(status);
       setState(() {
         _appStatus = status;
         _hasLoadedAppData = true;
         _appStatusToken = token ?? '';
+        if (canUse && _isQuotaBlockedMessage(_message)) {
+          _message = null;
+        }
       });
       _syncRemainingTimer(status.remainingSeconds);
       _syncStatusRefreshTimer();
@@ -298,6 +326,14 @@ class _VpnHomePageState extends State<VpnHomePage> {
       return fallback;
     }
     return text;
+  }
+
+  bool _isQuotaBlockedMessage(String? message) {
+    if (message == null || message.isEmpty) return false;
+    return message.contains('套餐已到期') ||
+        message.contains('流量不足') ||
+        message.contains('流量已用完') ||
+        message.contains('购买套餐');
   }
 
   /// Token 过期：清空本地 session，断开 VPN，提示用户重新登录
@@ -438,6 +474,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       _status = VpnStatus.disconnected;
       _connectedAt = null;
       _appStatus = const AppStatus(
+        hasPlan: false,
         planLevel: '免费体验',
         remainingSeconds: 0,
         remainingTimeText: '未登录',
@@ -477,6 +514,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       final next = _appStatus.remainingSeconds - 1;
       setState(() {
         _appStatus = AppStatus(
+          hasPlan: _appStatus.hasPlan,
           planLevel: _appStatus.planLevel,
           remainingSeconds: next < 0 ? 0 : next,
           remainingTimeText: _formatRemainingTime(next),
@@ -621,21 +659,54 @@ class _VpnHomePageState extends State<VpnHomePage> {
     final generation = ++_loadNodesGeneration;
     setState(() {
       _isLoadingNodes = true;
+      _isSpeedTesting = false;
       if (_message == '线路测速中，请稍候...' || _message == '请先加载并选择线路') {
         _message = null;
       }
     });
-    try {
-      final nodes = await _lineLoader.load();
-      final sortedNodes = await _speedTester.testAndSortNodes(nodes);
 
-      if (!mounted || generation != _loadNodesGeneration) {
+    try {
+      final cached = await _lineLoader.loadCached();
+      if (!mounted || generation != _loadNodesGeneration) return;
+      if (cached.isNotEmpty) {
+        setState(() {
+          _nodes = cached;
+          _selectedNode ??= cached.first;
+          _isLoadingNodes = false;
+          _isSpeedTesting = true;
+        });
+      }
+
+      final nodes = await _lineLoader.load();
+      if (!mounted || generation != _loadNodesGeneration) return;
+
+      final selectedId = _selectedNode?.id;
+      setState(() {
+        _nodes = nodes;
+        _selectedNode = _pickNodeById(nodes, selectedId) ??
+            (nodes.isNotEmpty ? nodes.first : null);
+        _isLoadingNodes = false;
+        _isSpeedTesting = nodes.isNotEmpty;
+      });
+
+      if (nodes.isEmpty) {
+        if (!mounted || generation != _loadNodesGeneration) return;
+        setState(() {
+          _isSpeedTesting = false;
+          _message = '线路加载失败，请点击重试';
+        });
         return;
       }
+
+      final sortedNodes = await _speedTester.testAndSortNodes(nodes);
+      if (!mounted || generation != _loadNodesGeneration) return;
+
+      final currentId = _selectedNode?.id;
       setState(() {
         _nodes = sortedNodes;
-        _selectedNode = sortedNodes.isNotEmpty ? sortedNodes.first : null;
-        _isLoadingNodes = false;
+        _selectedNode = _pickNodeById(sortedNodes, currentId) ??
+            (sortedNodes.isNotEmpty ? sortedNodes.first : null);
+        _isSpeedTesting = false;
         if (_message == '线路测速中，请稍候...' || _message == '请先加载并选择线路') {
           _message = null;
         }
@@ -644,13 +715,22 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (!mounted || generation != _loadNodesGeneration) return;
       setState(() {
         _isLoadingNodes = false;
+        _isSpeedTesting = false;
         if (_nodes.isEmpty) {
           _nodes = const [];
           _selectedNode = null;
+          _message = '线路加载失败，请点击重试';
         }
-        _message = '线路加载失败，请点击重试';
       });
     }
+  }
+
+  VpnNode? _pickNodeById(List<VpnNode> nodes, String? id) {
+    if (id == null) return null;
+    for (final node in nodes) {
+      if (node.id == id) return node;
+    }
+    return null;
   }
 
   Future<void> _refreshHome() async {
@@ -670,22 +750,31 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
     try {
       final nextNodes = await _lineLoader.load();
+      if (!mounted) return;
+
+      final currentId = _selectedNode?.id;
+      setState(() {
+        _nodes = nextNodes;
+        _selectedNode = _pickNodeById(nextNodes, currentId) ??
+            (nextNodes.isNotEmpty ? nextNodes.first : null);
+        _isSpeedTesting = nextNodes.isNotEmpty;
+      });
+
       final sortedNodes = await _speedTester.testAndSortNodes(nextNodes);
+      if (!mounted) return;
+
       if (!_sameNodes(_nodes, sortedNodes)) {
-        final currentId = _selectedNode?.id;
-        VpnNode? nextSelected;
-        for (final node in sortedNodes) {
-          if (node.id == currentId) {
-            nextSelected = node;
-            break;
-          }
-        }
+        final keepId = _selectedNode?.id;
+        final nextSelected = _pickNodeById(sortedNodes, keepId);
         setState(() {
           _nodes = sortedNodes;
           _selectedNode = nextSelected ??
               (sortedNodes.isNotEmpty ? sortedNodes.first : null);
+          _isSpeedTesting = false;
           _message = '线路已刷新';
         });
+      } else if (mounted) {
+        setState(() => _isSpeedTesting = false);
       }
       if (mounted) {
         setState(() => _message = '已刷新');
@@ -713,6 +802,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
       if (!mounted) return;
       setState(() {
         _isRefreshingLines = false;
+        _isSpeedTesting = false;
       });
     }
   }
@@ -760,8 +850,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
     if (_connectInFlight || _isConnecting || _isConnected) {
       return;
     }
-    if (_isLoadingNodes) {
-      _showConnectBlockedTip('线路测速中，请稍候...');
+    if (_isLoadingNodes && _nodes.isEmpty) {
+      _showConnectBlockedTip('线路加载中，请稍候...');
       return;
     }
 
@@ -800,8 +890,8 @@ class _VpnHomePageState extends State<VpnHomePage> {
         return;
       }
 
-      if (_isLoadingNodes) {
-        _showConnectBlockedTip('线路测速中，请稍候...');
+      if (_isLoadingNodes && _nodes.isEmpty) {
+        _showConnectBlockedTip('线路加载中，请稍候...');
         return;
       }
 
@@ -976,6 +1066,7 @@ class _VpnHomePageState extends State<VpnHomePage> {
     setState(() {
       _session = null;
       _appStatus = const AppStatus(
+        hasPlan: false,
         planLevel: '免费体验',
         remainingSeconds: 0,
         remainingTimeText: '未登录',
@@ -1038,26 +1129,29 @@ class _VpnHomePageState extends State<VpnHomePage> {
     );
   }
 
-  void _openPurchasePage() {
+  Future<void> _openPurchasePage() async {
     // 检查是否已登录
     if (_session == null || _session!.token.isEmpty) {
       // 未登录，先跳转到登录页面
-      Navigator.of(context).push(
+      await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => AuthPage(
-            onLoginSuccess: (session) {
+            onLoginSuccess: (session) async {
               // 登录成功后，更新session并打开购买页面
               setState(() {
                 _session = session;
               });
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
+              final activated = await Navigator.of(context).push<bool>(
+                MaterialPageRoute<bool>(
                   builder: (_) => PurchasePage(
                     username: session.username,
                     token: session.token,
                   ),
                 ),
               );
+              if (activated == true && mounted) {
+                await _loadAppData();
+              }
             },
           ),
         ),
@@ -1066,14 +1160,17 @@ class _VpnHomePageState extends State<VpnHomePage> {
     }
 
     // 已登录，直接打开购买页面
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
+    final activated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
         builder: (_) => PurchasePage(
           username: _session!.username,
           token: _session!.token,
         ),
       ),
     );
+    if (activated == true && mounted) {
+      await _loadAppData();
+    }
   }
 
   void _openNodePicker() {
@@ -1157,25 +1254,16 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   String get _displayTrafficRemaining {
     try {
-      final text = _appStatus.trafficRemaining.trim();
-      final isFreeTrial = _appStatus.planLevel == '免费体验';
-      if (isFreeTrial && (text == '0G' || text == '0GB' || text == '0 GB')) {
-        return '无限流量';
-      }
+      final text = _resolvedTrafficRemaining;
 
-      // 简化逻辑：直接显示后端返回的值
-      // 因为现在有心跳定时器（每60秒），后端数据会及时更新
-      // 只对未上报的流量（最多60秒内的）进行乐观更新
       if (!_isConnected) return text;
 
-      // 只显示当前未消费的流量增量（秒级更新）
       final unconsumedBytes = VpnNativeChannel.unconsumedBytes;
       if (unconsumedBytes <= 0) return text;
 
-      // 乐观更新：减去实时流量增量（不包括已累积的 _pendingTrafficBytes）
       return _calculateOptimisticTraffic(text, unconsumedBytes);
     } catch (_) {
-      return _appStatus.trafficRemaining;
+      return _resolvedTrafficRemaining;
     }
   }
 
@@ -1293,9 +1381,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
                     message: _message,
                     remainingTimeText: _appStatus.remainingTimeText,
                     trafficRemaining: _displayTrafficRemaining,
-                    isLoadingNodes: _isLoadingNodes,
+                    isLoadingNodes: _isLoadingNodes && _nodes.isEmpty,
+                    isSpeedTesting: _isSpeedTesting,
                     isLoadingStatus: !_hasLoadedAppData,
-                    isBusy: _isConnecting || _isLoadingNodes,
+                    isBusy: _isConnecting,
                     hasNodes: _nodes.isNotEmpty,
                     onReloadNodes: _loadNodes,
                     onPowerPressed: _isConnected ? _disconnect : _connect,
