@@ -10,23 +10,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetStats 数据概览
+const statsOnlineWindow = 2 * time.Minute
+
+// GetStats 仪表盘数据概览
 func GetStats(c *gin.Context) {
-	var totalUsers, totalDevices, activeOrders, todayNew int64
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	threeDaysAgo := now.AddDate(0, 0, -3)
+	onlineCutoff := now.Add(-statsOnlineWindow)
 
-	database.DB.Model(&model.User{}).Count(&totalUsers)
-	database.DB.Model(&model.Device{}).Count(&totalDevices)
+	var todayNew, totalMembers, onlineMembers, loginWithin3Days int64
+	var todayIncomeCents int64
+
+	database.DB.Model(&model.User{}).Where("created_at >= ?", todayStart).Count(&todayNew)
+	database.DB.Model(&model.User{}).Count(&totalMembers)
+	database.DB.Model(&model.Device{}).
+		Where("last_seen_at > ?", onlineCutoff).
+		Distinct("user_id").
+		Count(&onlineMembers)
 	database.DB.Model(&model.User{}).
-		Where("current_plan_id IS NOT NULL AND plan_expired_at > ?", time.Now()).
-		Count(&activeOrders)
-
-	today := time.Now().Truncate(24 * time.Hour)
-	database.DB.Model(&model.User{}).Where("created_at >= ?", today).Count(&todayNew)
+		Where("last_login_at >= ?", threeDaysAgo).
+		Count(&loginWithin3Days)
+	database.DB.Model(&model.PaymentOrder{}).
+		Where("status = ? AND paid_at >= ?", "paid", todayStart).
+		Select("COALESCE(SUM(amount_cents), 0)").
+		Scan(&todayIncomeCents)
 
 	handler.OK(c, gin.H{
-		"total_users":   totalUsers,
-		"total_devices": totalDevices,
-		"active_orders": activeOrders,
-		"today_new":     todayNew,
+		"today_new":           todayNew,
+		"today_income_cents":  todayIncomeCents,
+		"total_members":       totalMembers,
+		"online_members":      onlineMembers,
+		"login_within_3_days": loginWithin3Days,
 	})
 }

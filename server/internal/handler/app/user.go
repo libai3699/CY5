@@ -8,6 +8,7 @@ import (
 	"cy5vpn/server/internal/geoip"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -59,28 +60,22 @@ func GetUserStatus(c *gin.Context) {
 
 	remaining := freeRemaining(user)
 
-	planLevel := "免费体验"
-	remainingSeconds := remaining
-	if hasPlan {
-		planLevel = "付费套餐"
-		secs := int(time.Until(*user.PlanExpiredAt).Seconds())
-		if secs < 0 {
-			secs = 0
+	if coupling := service.QuotaCouplingUpdates(user); len(coupling) > 0 {
+		database.DB.Model(&user).Updates(coupling)
+		if err := database.DB.First(&user, userID).Error; err == nil {
+			hasPlan = userHasPlan(user)
 		}
-		remainingSeconds = secs
 	}
 
+	planLevel := "免费体验"
+	remainingSeconds := remaining
 	trafficRemaining := "0 GB"
 	if hasPlan {
-		if user.TrafficLimitBytes != nil {
-			left := *user.TrafficLimitBytes - user.TrafficUsedBytes
-			if left < 0 {
-				left = 0
-			}
-			trafficRemaining = formatGB(left)
-		} else {
-			trafficRemaining = "不限流量"
-		}
+		quota := service.BuildPlanQuotaView(user, formatGB)
+		planLevel = "付费套餐"
+		remainingSeconds = quota.RemainingSeconds
+		trafficRemaining = quota.TrafficRemaining
+		hasPlan = quota.HasPlan
 	}
 
 	println("[STATUS] 返回结果 | 剩余流量:", trafficRemaining)
@@ -185,6 +180,12 @@ func UserHeartbeat(c *gin.Context) {
 	if hasPlan && user.TrafficLimitBytes != nil && user.TrafficUsedBytes >= *user.TrafficLimitBytes {
 		trafficExhausted = true
 		println("[TRAFFIC] UserID:", user.ID, "流量已耗尽! 已用:", user.TrafficUsedBytes, "限制:", *user.TrafficLimitBytes)
+		if coupling := service.QuotaCouplingUpdates(user); len(coupling) > 0 {
+			database.DB.Model(&user).Updates(coupling)
+			if err := database.DB.First(&user, userID).Error; err == nil {
+				hasPlan = userHasPlan(user)
+			}
+		}
 	}
 
 	if len(updates) > 0 {
@@ -194,21 +195,16 @@ func UserHeartbeat(c *gin.Context) {
 	}
 
 	remaining := freeRemaining(user)
-	if hasPlan {
-		remaining = int(time.Until(*user.PlanExpiredAt).Seconds())
-	}
-
-	// 计算流量剩余
+	remainingSeconds := remaining
 	trafficRemaining := "0 GB"
+	hasPlanActive := hasPlan
 	if hasPlan {
-		if user.TrafficLimitBytes != nil {
-			left := *user.TrafficLimitBytes - user.TrafficUsedBytes
-			if left < 0 {
-				left = 0
-			}
-			trafficRemaining = formatGB(left)
-		} else {
-			trafficRemaining = "不限流量"
+		quota := service.BuildPlanQuotaView(user, formatGB)
+		remainingSeconds = quota.RemainingSeconds
+		trafficRemaining = quota.TrafficRemaining
+		hasPlanActive = quota.HasPlan
+		if quota.TrafficLeftBytes <= 0 && user.TrafficLimitBytes != nil {
+			trafficExhausted = true
 		}
 	}
 
@@ -216,9 +212,9 @@ func UserHeartbeat(c *gin.Context) {
 	println("[HEARTBEAT] ========== 心跳处理完成 ==========")
 
 	handler.OK(c, gin.H{
-		"has_plan":            hasPlan,
-		"remaining_seconds":   remaining,
-		"remaining_time_text": formatRemainingTime(remaining),
+		"has_plan":            hasPlanActive,
+		"remaining_seconds":   remainingSeconds,
+		"remaining_time_text": formatRemainingTime(remainingSeconds),
 		"traffic_remaining":   trafficRemaining,
 		"traffic_exhausted":   trafficExhausted,
 	})

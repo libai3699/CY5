@@ -21,6 +21,12 @@ export const overridesPreferences = defineOverridesPreferences({
     name: import.meta.env.VITE_APP_TITLE,
     defaultHomePath: '/workspace',
   },
+  logo: {
+    enable: true,
+    fit: 'cover',
+    source: '/logo.png',
+    sourceDark: '/logo.png',
+  },
 });
 
 export const preferencesExtension =

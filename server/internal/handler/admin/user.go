@@ -7,11 +7,11 @@ import (
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/handler"
 	"cy5vpn/server/internal/model"
+	"cy5vpn/server/internal/service"
 	"cy5vpn/server/internal/ws"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 const userOnlineWindow = 2 * time.Minute
@@ -238,6 +238,7 @@ func UpdateUser(c *gin.Context) {
 			updates["traffic_limit_bytes"] = user.TrafficUsedBytes + *req.TrafficRemainingBytes
 		}
 	}
+	service.ApplyAdminQuotaCoupling(user, req.RemainingSeconds, req.TrafficRemainingBytes, updates)
 
 	if len(updates) == 0 {
 		handler.OK(c, gin.H{"msg": "更新成功"})
@@ -263,50 +264,7 @@ func DeleteUser(c *gin.Context) {
 		handler.Fail(c, 404, "用户不存在")
 		return
 	}
-	if err := database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.Device{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&model.User{}).
-			Where("inviter_id = ?", user.ID).
-			Update("inviter_id", nil).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("inviter_id = ? OR invitee_id = ?", user.ID, user.ID).
-			Delete(&model.InviteRewardLog{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("target_user_id = ?", user.ID).
-			Delete(&model.Notice{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.UserNoticeRead{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.UserLoginLog{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.DurationLog{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.OrderRecord{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.PaymentOrder{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", user.ID).
-			Delete(&model.PageEvent{}).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&user).Error
-	}); err != nil {
+	if err := service.DeleteUserByID(database.DB, user.ID); err != nil {
 		handler.Fail(c, 500, "删除用户失败")
 		return
 	}

@@ -1,10 +1,11 @@
 import { requestClient } from '#/api/request';
 
 export interface Stats {
-  total_users: number;
-  total_devices: number;
-  active_orders: number;
   today_new: number;
+  today_income_cents: number;
+  total_members: number;
+  online_members: number;
+  login_within_3_days: number;
 }
 
 export const getStats = () =>

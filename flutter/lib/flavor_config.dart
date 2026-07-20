@@ -16,7 +16,4 @@ class FlavorConfig {
 
   /// 应用副标题（Drawer 底部等）
   static String get appSubtitle => isAcc ? '9点9 Accelerator' : '9点9 VPN';
-
-  /// 埋点上报时的 app_type 字段
-  static String get appType => _flavor;
 }

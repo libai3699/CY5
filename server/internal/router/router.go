@@ -44,7 +44,6 @@ func Setup(r *gin.Engine) {
 		publicGroup.POST("/device/register", middleware.IPRateLimit("public_device_register", 20, time.Minute), app.DeviceRegister)
 		publicGroup.POST("/auth/register", middleware.IPRateLimit("public_auth_register", 10, time.Minute), app.Register)
 		publicGroup.POST("/auth/login", middleware.IPRateLimit("public_auth_login", 10, time.Minute), app.Login)
-		publicGroup.POST("/track", middleware.IPRateLimit("public_track", 60, time.Minute), app.TrackEvent)
 	}
 
 	// ── 前台 API（Flutter 调用）──────────────────────────────────
@@ -146,9 +145,6 @@ func Setup(r *gin.Engine) {
 			authGroup.POST("/files/discovery-image", middleware.AdminRequireRole("super_admin"), admin.UploadDiscoveryImage)
 			authGroup.DELETE("/files/:key", middleware.AdminRequireRole("super_admin"), admin.DeleteFile)
 
-			// 埋点统计
-			authGroup.GET("/events", admin.ListPageEvents)
-			authGroup.GET("/events/stats", admin.PageEventStats)
 			authGroup.GET("/logs/user", admin.ListUserLogs)
 			authGroup.GET("/logs/admin", admin.ListAdminLogs)
 

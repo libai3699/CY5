@@ -286,6 +286,7 @@ onUnmounted(() => {
         <el-button type="primary" @click="openCreate">新增用户</el-button>
       </div>
 
+      <div class="table-scroll-x">
       <el-table :data="list" v-loading="loading" border stripe>
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="username" label="用户名" width="120" />
@@ -347,7 +348,7 @@ onUnmounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="350" fixed="right">
+        <el-table-column label="操作" width="350">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" type="primary" @click="openAddDuration(row)">追加时长</el-button>
@@ -358,6 +359,7 @@ onUnmounted(() => {
           </template>
         </el-table-column>
       </el-table>
+      </div>
 
       <div class="mt-4 flex justify-end">
         <el-pagination
@@ -469,3 +471,17 @@ onUnmounted(() => {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.table-scroll-x {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+.table-scroll-x :deep(.el-table) {
+  min-width: 2200px;
+}
+</style>

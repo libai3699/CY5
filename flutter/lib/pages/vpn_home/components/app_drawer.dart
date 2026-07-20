@@ -82,7 +82,7 @@ class AppDrawer extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                loggedIn ? username! : '\u672a\u767b\u5f55',
+                                planLevel,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -93,7 +93,7 @@ class AppDrawer extends StatelessWidget {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                planLevel,
+                                loggedIn ? '会员已登录' : '未登录',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -125,37 +125,20 @@ class AppDrawer extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        Clipboard.setData(ClipboardData(text: deviceId));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('\u8bbe\u5907 ID \u5df2\u590d\u5236'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '\u8bbe\u5907 ID  $deviceId',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(
-                            width: 24,
-                            child: Icon(Icons.copy_rounded,
-                                color: Colors.white70, size: 15),
-                          ),
-                        ],
-                      ),
+                    _drawerCopyRowV2(
+                      context,
+                      label: '账号',
+                      value: loggedIn ? username! : '未登录',
+                      copiedMessage: '账号已复制',
+                      copyEnabled: loggedIn,
+                    ),
+                    const SizedBox(height: 8),
+                    _drawerCopyRowV2(
+                      context,
+                      label: '设备 ID',
+                      value: deviceId,
+                      copiedMessage: '设备 ID 已复制',
+                      copyEnabled: deviceId.isNotEmpty && deviceId != '读取中',
                     ),
                   ],
                 ),
@@ -233,6 +216,55 @@ class AppDrawer extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _drawerCopyRowV2(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required String copiedMessage,
+    bool copyEnabled = true,
+  }) {
+    final canCopy = copyEnabled &&
+        value.isNotEmpty &&
+        value != '未登录' &&
+        value != '读取中';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: canCopy
+          ? () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(copiedMessage),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          : null,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$label  $value',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (canCopy)
+            const SizedBox(
+              width: 28,
+              child: Icon(Icons.copy_rounded, color: Colors.white70, size: 17),
+            ),
+        ],
       ),
     );
   }
@@ -318,7 +350,9 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _buildLegacyDrawerUnused(context);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final width = PlatformUtils.getDrawerWidth(screenWidth);
+    return _buildDrawerV2(context, width);
   }
 
   Widget _buildLegacyDrawerUnused(BuildContext context) {

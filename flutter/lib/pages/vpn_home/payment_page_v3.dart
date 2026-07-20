@@ -53,6 +53,39 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   bool _creatingPayment = false;
   final Set<String> _savedManualQrUrls = <String>{};
 
+  void _beginPaymentProcessing() {
+    if (!mounted || _creatingPayment) return;
+    setState(() => _creatingPayment = true);
+  }
+
+  void _endPaymentProcessing() {
+    if (!mounted || !_creatingPayment) return;
+    setState(() => _creatingPayment = false);
+  }
+
+  Widget _withPaymentProcessingOverlay(Widget child) {
+    return Stack(
+      children: [
+        child,
+        if (_creatingPayment)
+          Positioned.fill(
+            child: AbsorbPointer(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.08),
+                child: const Center(
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(strokeWidth: 3),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   // 仅用于界面展示；实际支付金额始终由服务端按套餐计算。
   late final double _paymentAmount;
   late double _usdtAmount;
@@ -166,7 +199,9 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     }
   }
 
-  Future<void> _startOnlinePayment() async {
+  Future<void> _startOnlinePayment({bool manageLoading = true}) async {
+    if (_creatingPayment && manageLoading) return;
+
     if (!_loggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先登录后再发起在线支付')),
@@ -180,7 +215,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       return;
     }
 
-    setState(() => _creatingPayment = true);
+    if (manageLoading) _beginPaymentProcessing();
     final client = HttpClient();
     try {
       final request = await client.postUrl(Uri.parse(kPaymentOrdersApiUrl));
@@ -215,6 +250,8 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
         mode: LaunchMode.externalApplication,
       );
       if (!opened) throw Exception('无法打开支付页面');
+      // 浏览器已打开后再关闭 loading，避免弹窗期间仍卡住界面。
+      _endPaymentProcessing();
       if (mounted) await _showPaymentResultDialog();
     } catch (_) {
       if (mounted) {
@@ -227,7 +264,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       }
     } finally {
       client.close(force: true);
-      if (mounted) setState(() => _creatingPayment = false);
+      if (manageLoading) _endPaymentProcessing();
     }
   }
 
@@ -335,6 +372,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   }
 
   Future<void> _handleAutoPaymentAction() async {
+    if (_creatingPayment) return;
     if (_orderNo != null) {
       await _checkAndShowStatus();
       return;
@@ -345,15 +383,21 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       confirmText: '确认前往支付',
     );
     if (!confirmed || !mounted) return;
-    final result = await _notifyPaymentConfirmed();
-    if (!mounted) return;
-    if (!result.ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message)),
-      );
-      return;
+
+    _beginPaymentProcessing();
+    try {
+      final result = await _notifyPaymentConfirmed();
+      if (!mounted) return;
+      if (!result.ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result.message)),
+        );
+        return;
+      }
+      await _startOnlinePayment(manageLoading: false);
+    } finally {
+      _endPaymentProcessing();
     }
-    await _startOnlinePayment();
   }
 
   Future<void> _handleWindowsPaymentAction() async {
@@ -397,13 +441,19 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   }
 
   Future<void> _checkAndShowStatus() async {
-    final paid = await _checkPaymentStatus();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(paid ? '支付已到账，套餐已自动开通' : '暂未到账，请稍后再检查'),
-      ),
-    );
+    if (_creatingPayment) return;
+    _beginPaymentProcessing();
+    try {
+      final paid = await _checkPaymentStatus();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(paid ? '支付已到账，套餐已自动开通' : '暂未到账，请稍后再检查'),
+        ),
+      );
+    } finally {
+      _endPaymentProcessing();
+    }
   }
 
   Future<void> _showPaymentResultDialog() async {
@@ -623,10 +673,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
     }
 
     if (PlatformUtils.isWindows) {
-      return _buildWindowsBody();
+      return _withPaymentProcessingOverlay(_buildWindowsBody());
     }
 
-    return _buildMobilePaymentFlowV4();
+    return _withPaymentProcessingOverlay(_buildMobilePaymentFlowV4());
   }
 
   Widget _buildWindowsBody() {
@@ -645,7 +695,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
       previewImageUrl: previewUrl,
       onActionPressed: _creatingPayment ? null : _handleWindowsPaymentAction,
       actionLabel: _creatingPayment
-          ? '正在创建订单...'
+          ? '处理中...'
           : manualLike
               ? '我已支付完毕'
               : (_orderNo == null ? '确认并前往支付' : '检查订单状态'),
@@ -3706,8 +3756,10 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                   : _orderNo == null
                       ? _handleAutoPaymentAction
                       : _checkAndShowStatus)
-              : (_manualModeAvailable ? _confirmManualPaymentV4 : null),
-          icon: _creatingPayment && automatic
+              : (_manualModeAvailable && !_creatingPayment
+                  ? _confirmManualPaymentV4
+                  : null),
+          icon: _creatingPayment
               ? const SizedBox(
                   width: 18,
                   height: 18,
@@ -3718,11 +3770,13 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
                   ? Icons.open_in_browser_rounded
                   : Icons.check_circle_outline_rounded),
           label: Text(
-            automatic
-                ? (_orderNo == null
-                    ? '确认并前往支付'
-                    : '检查订单到账状态')
-                : '我已支付完毕',
+            _creatingPayment
+                ? '处理中...'
+                : automatic
+                    ? (_orderNo == null
+                        ? '确认并前往支付'
+                        : '检查订单到账状态')
+                    : '我已支付完毕',
             style: const TextStyle(fontWeight: FontWeight.w900),
           ),
           style: FilledButton.styleFrom(
@@ -3736,6 +3790,7 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
   }
 
   Future<void> _confirmManualPaymentV4() async {
+    if (_creatingPayment) return;
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
@@ -3756,8 +3811,15 @@ class _PaymentPageV3State extends State<PaymentPageV3> {
         ) ??
         false;
     if (!confirmed || !mounted) return;
-    final result = await _notifyPaymentConfirmed();
-    await _finishPaymentActivation(result);
+
+    _beginPaymentProcessing();
+    try {
+      final result = await _notifyPaymentConfirmed();
+      if (!mounted) return;
+      await _finishPaymentActivation(result);
+    } finally {
+      _endPaymentProcessing();
+    }
   }
 
   Widget _buildInfoRow(String label, String value) {

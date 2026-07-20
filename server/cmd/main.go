@@ -6,6 +6,7 @@ import (
 	"cy5vpn/server/internal/config"
 	"cy5vpn/server/internal/database"
 	"cy5vpn/server/internal/router"
+	"cy5vpn/server/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,12 +24,15 @@ func main() {
 	// 4. 自动建表 + 初始数据
 	database.Migrate()
 
-	// 5. 注册路由
+	// 5. 启动长期未登录用户自动清理（默认 45 天）
+	service.StartInactiveUserCleanup(database.DB, service.InactiveUserDaysFromEnv(config.GetEnv))
+
+	// 6. 注册路由
 	r := gin.New()
 	r.SetTrustedProxies([]string{"127.0.0.1"})
 	router.Setup(r)
 
-	// 6. 启动服务
+	// 7. 启动服务
 	addr := ":" + config.App.ServerPort
 	log.Printf("[server] 启动在 http://localhost%s", addr)
 	if err := r.Run(addr); err != nil {

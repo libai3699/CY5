@@ -21,8 +21,13 @@ async function submit() {
 <template>
   <main class="cy-login-page">
     <section class="cy-login-card">
-      <h1>后台登录</h1>
-      <p>请输入账号、密码和 Google Authenticator 动态验证码</p>
+      <div class="cy-login-brand">
+        <img alt="9点9 VPN" class="cy-login-logo" src="/logo.png" />
+        <div>
+          <h1>后台登录</h1>
+          <p>请输入账号、密码和 Google Authenticator 动态验证码</p>
+        </div>
+      </div>
 
       <label>
         <span>用户名</span>
@@ -59,6 +64,33 @@ async function submit() {
   border-radius: 8px;
   background: #fff;
   padding: 28px;
+}
+
+.cy-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.cy-login-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.cy-login-brand h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 24px;
+}
+
+.cy-login-brand p {
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 14px;
 }
 
 .cy-login-card h1 {

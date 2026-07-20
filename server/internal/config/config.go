@@ -124,6 +124,11 @@ func getEnv(key, defaultVal string) string {
 	return defaultVal
 }
 
+// GetEnv 读取环境变量，不存在时返回默认值。
+func GetEnv(key, defaultVal string) string {
+	return getEnv(key, defaultVal)
+}
+
 func mustEnv(key string) string {
 	v := os.Getenv(key)
 	if v == "" {
