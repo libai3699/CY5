@@ -18,6 +18,8 @@ class NoticeBar extends StatefulWidget {
 }
 
 class _NoticeBarState extends State<NoticeBar> {
+  static const _carouselInterval = Duration(seconds: 3);
+
   List<String> _notices = [];
   int _current = 0;
   Timer? _timer;
@@ -43,8 +45,33 @@ class _NoticeBarState extends State<NoticeBar> {
     super.dispose();
   }
 
+  void _startCarousel() {
+    _timer?.cancel();
+    if (_notices.length <= 1) return;
+    _timer = Timer.periodic(_carouselInterval, (_) {
+      if (!mounted || _notices.length <= 1) return;
+      setState(() => _current = (_current + 1) % _notices.length);
+    });
+  }
+
+  List<String> _parseNoticeContents(dynamic data) {
+    final dynamic list =
+        data is Map && data['list'] is List ? data['list'] : data;
+    if (list is! List) return const [];
+
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map((e) => e['content']?.toString().trim() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toList();
+  }
+
   Future<void> _load() async {
     _timer?.cancel();
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+
     final url = widget.token == null ? kNoticesApiUrl : kUserNoticesApiUrl;
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
@@ -60,29 +87,19 @@ class _NoticeBarState extends State<NoticeBar> {
       if (response.statusCode < 200 || response.statusCode >= 300) return;
 
       final decoded = jsonDecode(body);
-      final data = decoded?['data'];
-      final list = data is Map && data['list'] is List ? data['list'] : data;
-      if (list is List && mounted) {
-        final contents = list
-            .whereType<Map<String, dynamic>>()
-            .map((e) => e['content']?.toString() ?? '')
-            .where((s) => s.isNotEmpty)
-            .toList();
-        setState(() {
-          _notices = contents;
-          _current = 0;
-        });
-        if (contents.length > 1) {
-          _timer = Timer.periodic(const Duration(seconds: 4), (_) {
-            if (!mounted) return;
-            setState(() => _current = (_current + 1) % _notices.length);
-          });
-        }
-      }
+      final contents = _parseNoticeContents(decoded?['data']);
+      if (!mounted) return;
+
+      setState(() {
+        _notices = contents;
+        _current = 0;
+        _loading = false;
+      });
+      _startCarousel();
     } catch (_) {
+      if (mounted) setState(() => _loading = false);
     } finally {
       client.close(force: true);
-      if (mounted && _loading) setState(() => _loading = false);
     }
   }
 
@@ -105,40 +122,52 @@ class _NoticeBarState extends State<NoticeBar> {
               color: Color(0xFFE11D48), size: 18),
           const SizedBox(width: 10),
           Expanded(
-            child: ClipRect(
+            child: SizedBox(
+              height: 36,
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 320),
-                layoutBuilder: (currentChild, previousChildren) => Stack(
-                  alignment: Alignment.centerLeft,
-                  children: [
-                    ...previousChildren,
-                    if (currentChild != null) currentChild,
-                  ],
-                ),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
                 transitionBuilder: (child, animation) {
-                  final isIncoming = child.key == ValueKey(_current);
-                  final offset = Tween<Offset>(
-                    begin: Offset(0, isIncoming ? 1 : -1),
+                  final offsetAnimation = Tween<Offset>(
+                    begin: const Offset(0, 0.35),
                     end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                      parent: animation, curve: Curves.easeOutCubic));
-                  return SlideTransition(position: offset, child: child);
+                  ).animate(animation);
+                  return ClipRect(
+                    child: SlideTransition(
+                      position: offsetAnimation,
+                      child: FadeTransition(opacity: animation, child: child),
+                    ),
+                  );
                 },
                 child: Align(
-                  key: ValueKey(_current),
+                  key: ValueKey<String>('$_current-${_notices[_current]}'),
                   alignment: Alignment.centerLeft,
                   child: Text(
                     _notices[_current],
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.left,
-                    style:
-                        const TextStyle(color: Color(0xFF881337), fontSize: 13),
+                    style: const TextStyle(
+                      color: Color(0xFF881337),
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
+          if (_notices.length > 1) ...[
+            const SizedBox(width: 8),
+            Text(
+              '${_current + 1}/${_notices.length}',
+              style: const TextStyle(
+                color: Color(0xFFBE5A74),
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );

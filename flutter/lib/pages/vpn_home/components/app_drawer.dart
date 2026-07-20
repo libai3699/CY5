@@ -44,103 +44,118 @@ class AppDrawer extends StatelessWidget {
 
   Widget _buildDrawerV2(BuildContext context, double width) {
     final loggedIn = username != null && username!.isNotEmpty;
+    final headerPlanText = loggedIn ? planLevel : '未登录';
+    final accountText = loggedIn ? username! : '免费体验';
+
     return SizedBox(
       width: width,
       child: Drawer(
         elevation: 0,
-        backgroundColor: const Color(0xFFFFF8FA),
+        backgroundColor: const Color(0xFFFFF1F2),
         child: SafeArea(
           child: Column(
             children: [
               Container(
-                margin: const EdgeInsets.all(12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3F1723), Color(0xFF881337)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Color(0xFFFFFFFF),
+                      Color(0xFFFFE8EE),
+                      Color(0xFFFFF1F2),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
                   ),
-                  borderRadius: BorderRadius.circular(20),
                 ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: Image.asset(
-                            'assets/images/logo.png',
-                            width: 46,
-                            height: 46,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        const SizedBox(width: 11),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                planLevel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                loggedIn ? '会员已登录' : '未登录',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Color(0xFFFFD5DF),
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFFFFFF),
+                        Color(0xFFFFEFF3),
+                        Color(0xFFFFE4EC),
                       ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _drawerMetricV2(
-                            '\u5269\u4f59\u6d41\u91cf',
-                            trafficRemaining,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Color(0xFFFFD5DF)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1A881337),
+                        blurRadius: 16,
+                        offset: Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.asset(
+                              'assets/images/logo.png',
+                              width: 46,
+                              height: 46,
+                              fit: BoxFit.cover,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _drawerMetricV2(
-                            '\u5269\u4f59\u65f6\u957f',
-                            remainingTimeText,
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Text(
+                              headerPlanText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF881337),
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _drawerCopyRowV2(
-                      context,
-                      label: '账号',
-                      value: loggedIn ? username! : '未登录',
-                      copiedMessage: '账号已复制',
-                      copyEnabled: loggedIn,
-                    ),
-                    const SizedBox(height: 8),
-                    _drawerCopyRowV2(
-                      context,
-                      label: '设备 ID',
-                      value: deviceId,
-                      copiedMessage: '设备 ID 已复制',
-                      copyEnabled: deviceId.isNotEmpty && deviceId != '读取中',
-                    ),
-                  ],
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _drawerMetricV2(
+                              '剩余流量',
+                              trafficRemaining,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _drawerMetricV2(
+                              '剩余时长',
+                              remainingTimeText,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _drawerCopyRowV2(
+                        context,
+                        value: accountText,
+                        copiedMessage: '账号已复制',
+                        copyEnabled: loggedIn,
+                      ),
+                      const SizedBox(height: 8),
+                      _drawerCopyRowV2(
+                        context,
+                        label: '设备 ID',
+                        value: deviceId,
+                        copiedMessage: '设备 ID 已复制',
+                        copyEnabled:
+                            deviceId.isNotEmpty && deviceId != '读取中',
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Expanded(
@@ -150,13 +165,13 @@ class AppDrawer extends StatelessWidget {
                     if (!loggedIn)
                       _drawerItemV2(
                         icon: Icons.account_circle_rounded,
-                        title: '\u767b\u5f55\u8d26\u53f7',
+                        title: '登录账号',
                         onTap: onLoginPressed,
                       ),
                     if (loggedIn)
                       _drawerItemV2(
                         icon: Icons.devices_rounded,
-                        title: '\u5df2\u767b\u5f55\u8bbe\u5907',
+                        title: '登录设备',
                         onTap: () {
                           Navigator.of(context).pop();
                           onDevicesPressed();
@@ -164,7 +179,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                     _drawerItemV2(
                       icon: Icons.shopping_bag_rounded,
-                      title: '\u8d2d\u4e70\u5957\u9910',
+                      title: '购买套餐',
                       onTap: () {
                         Navigator.of(context).pop();
                         onPurchasePressed();
@@ -172,7 +187,7 @@ class AppDrawer extends StatelessWidget {
                     ),
                     _drawerItemV2(
                       icon: Icons.explore_rounded,
-                      title: '\u53d1\u73b0\u5b9d\u85cf',
+                      title: '发现宝藏',
                       onTap: () {
                         Navigator.of(context).pop();
                         onDiscoverPressed();
@@ -180,7 +195,7 @@ class AppDrawer extends StatelessWidget {
                     ),
                     _drawerItemV2(
                       icon: Icons.card_giftcard_rounded,
-                      title: '\u9080\u8bf7\u597d\u53cb',
+                      title: '邀请好友',
                       onTap: () {
                         Navigator.of(context).pop();
                         onInvitePressed();
@@ -188,7 +203,7 @@ class AppDrawer extends StatelessWidget {
                     ),
                     _drawerItemV2(
                       icon: Icons.sync_rounded,
-                      title: '\u5237\u65b0\u7ebf\u8def',
+                      title: '刷新线路',
                       onTap: isRefreshingLines ? null : onRefreshLines,
                       trailing: isRefreshingLines
                           ? const SizedBox(
@@ -202,11 +217,8 @@ class AppDrawer extends StatelessWidget {
                       const Divider(height: 22, color: Color(0xFFFFD5DF)),
                       _drawerItemV2(
                         icon: Icons.logout_rounded,
-                        title: '\u9000\u51fa\u5f53\u524d\u8bbe\u5907',
-                        onTap: () {
-                          Navigator.of(context).pop();
-                          onLogoutPressed();
-                        },
+                        title: '退出当前设备',
+                        onTap: () => _confirmLogout(context),
                         danger: true,
                       ),
                     ],
@@ -220,9 +232,36 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('确认退出'),
+            content: const Text('确定退出当前设备？退出后需要重新登录。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFE11D48),
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('确认退出'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
+    Navigator.of(context).pop();
+    onLogoutPressed();
+  }
+
   Widget _drawerCopyRowV2(
     BuildContext context, {
-    required String label,
+    String label = '',
     required String value,
     required String copiedMessage,
     bool copyEnabled = true,
@@ -230,6 +269,7 @@ class AppDrawer extends StatelessWidget {
     final canCopy = copyEnabled &&
         value.isNotEmpty &&
         value != '未登录' &&
+        value != '免费体验' &&
         value != '读取中';
 
     return InkWell(
@@ -249,20 +289,21 @@ class AppDrawer extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              '$label  $value',
+              label.isEmpty ? value : '$label  $value',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+                color: Color(0xFF881337),
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
           if (canCopy)
             const SizedBox(
               width: 28,
-              child: Icon(Icons.copy_rounded, color: Colors.white70, size: 17),
+              child: Icon(Icons.copy_rounded,
+                  color: Color(0xFFBE5A74), size: 18),
             ),
         ],
       ),
@@ -273,21 +314,22 @@ class AppDrawer extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.10),
+        color: Colors.white.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFFFD5DF)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(color: Colors.white60, fontSize: 9)),
+              style: const TextStyle(color: Color(0xFFBE5A74), fontSize: 10)),
           const SizedBox(height: 3),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFF881337),
               fontSize: 12,
               fontWeight: FontWeight.w800,
             ),
