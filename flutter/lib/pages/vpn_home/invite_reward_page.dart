@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../utils/platform_utils.dart';
+import 'components/app_toast.dart';
 import 'components/common_page_top_bar.dart';
 import 'contact_page.dart';
 
@@ -172,13 +173,7 @@ class _HeroCard extends StatelessWidget {
                   onPressed: hasCode
                       ? () {
                           Clipboard.setData(ClipboardData(text: inviteCode));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('邀请码已复制'),
-                              duration: Duration(seconds: 2),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
+                          AppToast.show(context, '邀请码已复制');
                         }
                       : null,
                   icon: const Icon(Icons.copy_rounded, size: 17),

@@ -14,6 +14,7 @@ import '../../flavor_config.dart';
 import 'auth_page.dart';
 import 'chatgpt_page.dart';
 import 'components/app_drawer.dart';
+import 'components/app_toast.dart';
 import 'components/app_top_bar.dart';
 import 'components/node_picker_sheet.dart';
 import 'components/notice_bar.dart';
@@ -429,13 +430,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('打开官网失败，请稍后重试'),
-          backgroundColor: const Color(0xFFE11D48),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(AppToast.snackBar('打开官网失败，请稍后重试'));
     }
   }
 
@@ -491,19 +488,16 @@ class _VpnHomePageState extends State<VpnHomePage> {
       });
     } catch (_) {}
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('登录已过期，请重新登录'),
-        backgroundColor: const Color(0xFFE11D48),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 3),
-        action: SnackBarAction(
-          label: '去登录',
-          textColor: Colors.white,
-          onPressed: _openAuthPage,
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        AppToast.snackBar(
+          '登录已过期，请重新登录',
+          duration: const Duration(seconds: 3),
+          actionLabel: '去登录',
+          onAction: _openAuthPage,
         ),
-      ),
-    );
+      );
   }
 
   void _syncRemainingTimer(int seconds) {
@@ -778,26 +772,12 @@ class _VpnHomePageState extends State<VpnHomePage> {
       }
       if (mounted) {
         setState(() => _message = '已刷新');
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(
-              content: Text('已刷新'),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+        AppToast.show(context, '已刷新');
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _message = '刷新失败');
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          const SnackBar(
-            content: Text('刷新失败'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+      AppToast.show(context, '刷新失败');
     } finally {
       if (!mounted) return;
       setState(() {
@@ -835,15 +815,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
     }
     _lastConnectTipAt = now;
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(tip),
-        backgroundColor: const Color(0xFFE11D48),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(AppToast.snackBar(tip));
   }
 
   Future<void> _connect() async {
@@ -1085,13 +1059,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
     } catch (_) {}
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('已退出登录'),
-        behavior: SnackBarBehavior.floating,
-        duration: Duration(seconds: 2),
-      ),
-    );
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(AppToast.snackBar('已退出登录'));
   }
 
   void _openLoginDevicesPage() {
@@ -1109,6 +1079,10 @@ class _VpnHomePageState extends State<VpnHomePage> {
   }
 
   void _openInviteRewardPage() {
+    if (_session == null || _session!.token.isEmpty) {
+      _openAuthPage();
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
@@ -1175,14 +1149,9 @@ class _VpnHomePageState extends State<VpnHomePage> {
 
   void _openNodePicker() {
     if (_isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请先断开连接再切换线路'),
-          backgroundColor: Color(0xFFE11D48),
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(AppToast.snackBar('请先断开连接再切换线路'));
       return;
     }
 

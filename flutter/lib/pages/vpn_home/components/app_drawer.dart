@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../utils/platform_utils.dart';
 import '../data/api_config.dart';
+import 'app_toast.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({
@@ -95,9 +96,10 @@ class AppDrawer extends StatelessWidget {
                   child: Column(
                     children: [
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(6),
                             child: Image.asset(
                               'assets/images/logo.png',
                               width: 46,
@@ -107,15 +109,28 @@ class AppDrawer extends StatelessWidget {
                           ),
                           const SizedBox(width: 11),
                           Expanded(
-                            child: Text(
-                              headerPlanText,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Color(0xFF881337),
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _drawerCopyRowV2(
+                                  context,
+                                  label: '账号',
+                                  value: accountText,
+                                  copiedMessage: '账号已复制',
+                                  copyEnabled: loggedIn,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  headerPlanText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFFBE5A74),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -139,13 +154,6 @@ class AppDrawer extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      _drawerCopyRowV2(
-                        context,
-                        value: accountText,
-                        copiedMessage: '账号已复制',
-                        copyEnabled: loggedIn,
-                      ),
-                      const SizedBox(height: 8),
                       _drawerCopyRowV2(
                         context,
                         label: '设备 ID',
@@ -272,32 +280,41 @@ class AppDrawer extends StatelessWidget {
         value != '免费体验' &&
         value != '读取中';
 
+    const textStyle = TextStyle(
+      color: Color(0xFF881337),
+      fontSize: 15,
+      fontWeight: FontWeight.w800,
+    );
+
     return InkWell(
       borderRadius: BorderRadius.circular(8),
       onTap: canCopy
           ? () {
               Clipboard.setData(ClipboardData(text: value));
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(copiedMessage),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+              AppToast.show(context, copiedMessage);
             }
           : null,
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              label.isEmpty ? value : '$label  $value',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF881337),
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            child: label.isEmpty
+                ? Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textStyle,
+                  )
+                : Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: label, style: textStyle),
+                        const TextSpan(text: '  '),
+                        TextSpan(text: value, style: textStyle),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
           ),
           if (canCopy)
             const SizedBox(
@@ -476,13 +493,7 @@ class AppDrawer extends StatelessWidget {
                     onTap: () {
                       if (deviceId != '读取中') {
                         Clipboard.setData(ClipboardData(text: deviceId));
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('设备 ID 已复制'),
-                            duration: Duration(seconds: 2),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+                        AppToast.show(context, '设备 ID 已复制');
                       }
                     },
                     child: Row(

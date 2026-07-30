@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../utils/platform_utils.dart';
+import 'components/app_toast.dart';
 import 'components/common_page_top_bar.dart';
 import 'data/contact_service.dart';
 
@@ -17,19 +18,11 @@ class _ContactPageState extends State<ContactPage> {
   bool _loading = true;
   bool _isRefreshing = false;
   bool _fromCache = false;
-  OverlayEntry? _copyNoticeEntry;
 
   @override
   void initState() {
     super.initState();
     _load();
-  }
-
-  @override
-  void dispose() {
-    _copyNoticeEntry?.remove();
-    _copyNoticeEntry = null;
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -65,60 +58,7 @@ class _ContactPageState extends State<ContactPage> {
   Future<void> _copyContact(ContactItem item) async {
     await Clipboard.setData(ClipboardData(text: item.value));
     if (!mounted) return;
-    _showCopyNotice('已复制 ${item.label}');
-  }
-
-  void _showCopyNotice(String message) {
-    _copyNoticeEntry?.remove();
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) return;
-
-    final entry = OverlayEntry(
-      builder: (_) => Positioned(
-        top: 100,
-        left: 20,
-        right: 20,
-        child: IgnorePointer(
-          child: Material(
-            color: Colors.transparent,
-            child: Center(
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF881337).withOpacity(0.96),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.12),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    _copyNoticeEntry = entry;
-    overlay.insert(entry);
-    Future<void>.delayed(const Duration(seconds: 2), () {
-      if (_copyNoticeEntry == entry) {
-        _copyNoticeEntry?.remove();
-        _copyNoticeEntry = null;
-      }
-    });
+    AppToast.show(context, '已复制 ${item.label}');
   }
 
   @override

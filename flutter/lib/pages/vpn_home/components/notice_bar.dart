@@ -109,8 +109,8 @@ class _NoticeBarState extends State<NoticeBar> {
     if (_notices.isEmpty) return const SizedBox.shrink();
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.82),
         borderRadius: BorderRadius.circular(8),
@@ -119,51 +119,49 @@ class _NoticeBarState extends State<NoticeBar> {
       child: Row(
         children: [
           const Icon(Icons.campaign_rounded,
-              color: Color(0xFFE11D48), size: 18),
-          const SizedBox(width: 10),
+              color: Color(0xFFE11D48), size: 16),
+          const SizedBox(width: 8),
           Expanded(
-            child: SizedBox(
-              height: 36,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 320),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  final offsetAnimation = Tween<Offset>(
-                    begin: const Offset(0, 0.35),
-                    end: Offset.zero,
-                  ).animate(animation);
-                  return ClipRect(
-                    child: SlideTransition(
-                      position: offsetAnimation,
-                      child: FadeTransition(opacity: animation, child: child),
-                    ),
-                  );
-                },
-                child: Align(
-                  key: ValueKey<String>('$_current-${_notices[_current]}'),
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    _notices[_current],
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.left,
-                    style: const TextStyle(
-                      color: Color(0xFF881337),
-                      fontSize: 13,
-                    ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final offsetAnimation = Tween<Offset>(
+                  begin: const Offset(0, 0.35),
+                  end: Offset.zero,
+                ).animate(animation);
+                return ClipRect(
+                  child: SlideTransition(
+                    position: offsetAnimation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                );
+              },
+              child: Align(
+                key: ValueKey<String>('$_current-${_notices[_current]}'),
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _notices[_current],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.left,
+                  style: const TextStyle(
+                    color: Color(0xFF881337),
+                    fontSize: 13,
+                    height: 1.2,
                   ),
                 ),
               ),
             ),
           ),
           if (_notices.length > 1) ...[
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Text(
               '${_current + 1}/${_notices.length}',
               style: const TextStyle(
                 color: Color(0xFFBE5A74),
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -175,8 +173,8 @@ class _NoticeBarState extends State<NoticeBar> {
 
   Widget _buildSkeleton() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.82),
         borderRadius: BorderRadius.circular(8),
@@ -184,8 +182,8 @@ class _NoticeBarState extends State<NoticeBar> {
       ),
       child: const Row(
         children: [
-          Icon(Icons.campaign_rounded, color: Color(0xFFE11D48), size: 18),
-          SizedBox(width: 10),
+          Icon(Icons.campaign_rounded, color: Color(0xFFE11D48), size: 16),
+          SizedBox(width: 8),
           Expanded(
             child: SkeletonBox(
                 width: double.infinity, height: 13, borderRadius: 6),
