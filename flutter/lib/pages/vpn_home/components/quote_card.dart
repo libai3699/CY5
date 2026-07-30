@@ -74,6 +74,8 @@ class _QuoteCardState extends State<QuoteCard> {
             Expanded(
               child: Text(
                 _content!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Color(0xFF881337),
                   fontSize: 13,
@@ -100,7 +102,7 @@ class _QuoteCardState extends State<QuoteCard> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.72),
           borderRadius: BorderRadius.circular(8),

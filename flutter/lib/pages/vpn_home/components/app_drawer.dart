@@ -48,48 +48,55 @@ class AppDrawer extends StatelessWidget {
     final headerPlanText = loggedIn ? planLevel : '未登录';
     final accountText = loggedIn ? username! : '免费体验';
 
+    // 顶部较深粉 → 底部很浅粉白
     return SizedBox(
       width: width,
       child: Drawer(
         elevation: 0,
-        backgroundColor: const Color(0xFFFFF1F2),
-        child: SafeArea(
+        backgroundColor: const Color(0xFFFFF8F9),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFFFFD6E0),
+                Color(0xFFFFE4EC),
+                Color(0xFFFFF0F3),
+                Color(0xFFFFF7F8),
+                Color(0xFFFFFCFD),
+              ],
+              stops: [0, 0.22, 0.48, 0.76, 1],
+            ),
+          ),
+          child: SafeArea(
           child: Column(
             children: [
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Color(0xFFFFFFFF),
-                      Color(0xFFFFE8EE),
-                      Color(0xFFFFF1F2),
-                    ],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
-                ),
                 child: Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       colors: [
-                        Color(0xFFFFFFFF),
-                        Color(0xFFFFEFF3),
-                        Color(0xFFFFE4EC),
+                        Colors.white.withValues(alpha: 0.55),
+                        const Color(0xFFFFE4EC).withValues(alpha: 0.48),
+                        Colors.white.withValues(alpha: 0.35),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Color(0xFFFFD5DF)),
-                    boxShadow: const [
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.65),
+                    ),
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x1A881337),
+                        color: const Color(0xFF881337).withValues(alpha: 0.08),
                         blurRadius: 16,
-                        offset: Offset(0, 6),
+                        offset: const Offset(0, 6),
                       ),
                     ],
                   ),
@@ -114,7 +121,6 @@ class AppDrawer extends StatelessWidget {
                               children: [
                                 _drawerCopyRowV2(
                                   context,
-                                  label: '账号',
                                   value: accountText,
                                   copiedMessage: '账号已复制',
                                   copyEnabled: loggedIn,
@@ -217,7 +223,10 @@ class AppDrawer extends StatelessWidget {
                           ? const SizedBox(
                               width: 17,
                               height: 17,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFFE11D48),
+                              ),
                             )
                           : null,
                     ),
@@ -235,6 +244,7 @@ class AppDrawer extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -273,6 +283,7 @@ class AppDrawer extends StatelessWidget {
     required String value,
     required String copiedMessage,
     bool copyEnabled = true,
+    bool light = false,
   }) {
     final canCopy = copyEnabled &&
         value.isNotEmpty &&
@@ -280,11 +291,16 @@ class AppDrawer extends StatelessWidget {
         value != '免费体验' &&
         value != '读取中';
 
-    const textStyle = TextStyle(
-      color: Color(0xFF881337),
+    final textStyle = TextStyle(
+      color: light
+          ? Colors.white.withValues(alpha: 0.96)
+          : const Color(0xFF881337),
       fontSize: 15,
       fontWeight: FontWeight.w800,
     );
+    final iconColor = light
+        ? Colors.white.withValues(alpha: 0.88)
+        : const Color(0xFFBE5A74);
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
@@ -308,7 +324,10 @@ class AppDrawer extends StatelessWidget {
                     TextSpan(
                       children: [
                         TextSpan(text: label, style: textStyle),
-                        const TextSpan(text: '  '),
+                        TextSpan(
+                          text: '  ',
+                          style: textStyle,
+                        ),
                         TextSpan(text: value, style: textStyle),
                       ],
                     ),
@@ -317,10 +336,9 @@ class AppDrawer extends StatelessWidget {
                   ),
           ),
           if (canCopy)
-            const SizedBox(
+            SizedBox(
               width: 28,
-              child: Icon(Icons.copy_rounded,
-                  color: Color(0xFFBE5A74), size: 18),
+              child: Icon(Icons.copy_rounded, color: iconColor, size: 18),
             ),
         ],
       ),
@@ -331,7 +349,7 @@ class AppDrawer extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
+        color: Colors.white.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFFFD5DF)),
       ),
@@ -363,13 +381,15 @@ class AppDrawer extends StatelessWidget {
     Widget? trailing,
     bool danger = false,
   }) {
-    final color = danger ? const Color(0xFFE11D48) : const Color(0xFF6F4B57);
+    final color = danger ? const Color(0xFFE11D48) : const Color(0xFF8A4A52);
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
+          splashColor: const Color(0x33E11D48),
+          highlightColor: const Color(0x14E11D48),
           onTap: onTap,
           child: SizedBox(
             height: 50,

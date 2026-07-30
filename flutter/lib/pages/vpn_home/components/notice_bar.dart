@@ -110,13 +110,13 @@ class _NoticeBarState extends State<NoticeBar> {
 
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withOpacity(0.72),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.9)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const Icon(Icons.campaign_rounded,
               color: Color(0xFFE11D48), size: 16),
@@ -149,14 +149,14 @@ class _NoticeBarState extends State<NoticeBar> {
                   style: const TextStyle(
                     color: Color(0xFF881337),
                     fontSize: 13,
-                    height: 1.2,
+                    height: 1.5,
                   ),
                 ),
               ),
             ),
           ),
           if (_notices.length > 1) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Text(
               '${_current + 1}/${_notices.length}',
               style: const TextStyle(
@@ -174,11 +174,10 @@ class _NoticeBarState extends State<NoticeBar> {
   Widget _buildSkeleton() {
     return Container(
       margin: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withOpacity(0.72),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.9)),
       ),
       child: const Row(
         children: [

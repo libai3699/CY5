@@ -28,4 +28,4 @@ const String kUserLogoutApiUrl = '$kApiBaseUrl/api/public/user/logout';
 const String kMarkNoticeReadUrl =
     '$kApiBaseUrl/api/app/user/notices'; // + /{id}/read
 const String kMarkAllReadUrl = '$kApiBaseUrl/api/app/user/notices/read-all';
-const String kAppVersion = '0.1.5';
+const String kAppVersion = '0.1.6';
