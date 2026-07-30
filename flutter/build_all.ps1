@@ -1,10 +1,30 @@
 param(
-    [ValidateSet('all', 'android', 'windows')]
-    [string]$Target = 'all'
+    # empty/all: vpn+acc apk + windows
+    # 1 / vpn-apk: vpn apk only
+    # 2 / vpn-exe: vpn windows exe only
+    [Parameter(Position = 0)]
+    [Alias('Target')]
+    [ValidateSet('', 'all', 'android', 'windows', '1', '2', 'vpn-apk', 'vpn-exe')]
+    [string]$Mode = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$buildMode = switch ($Mode) {
+    { $_ -in @('', 'all') } { 'all' }
+    'android' { 'android' }
+    'windows' { 'windows' }
+    { $_ -in @('1', 'vpn-apk') } { 'vpn-apk' }
+    { $_ -in @('2', 'vpn-exe') } { 'vpn-exe' }
+    default { throw "Unsupported mode: $Mode" }
+}
+
+$buildAndroidVpn = $buildMode -in @('all', 'android', 'vpn-apk')
+$buildAndroidAcc = $buildMode -in @('all', 'android')
+$buildWindowsVpn = $buildMode -in @('all', 'windows', 'vpn-exe')
+$buildWindowsAcc = $buildMode -in @('all', 'windows')
+$needWindows = $buildWindowsVpn -or $buildWindowsAcc
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $projectRoot
@@ -466,7 +486,21 @@ $env:PATH = @(
     (Join-Path $script:flutterSdkRoot 'bin\cache\dart-sdk\bin'),
     $env:PATH
 ) -join ';'
-$script:innoCompiler = Get-InnoCompiler
+
+$modeLabel = switch ($buildMode) {
+    'all' { 'all (vpn+acc apk + windows)' }
+    'android' { 'android (vpn+acc apk)' }
+    'windows' { 'windows (vpn+acc exe)' }
+    'vpn-apk' { 'vpn apk only' }
+    'vpn-exe' { 'vpn windows exe only' }
+}
+Write-Host "Build mode: $modeLabel" -ForegroundColor Yellow
+
+$script:innoCompiler = $null
+if ($needWindows) {
+    $script:innoCompiler = Get-InnoCompiler
+}
+
 $flutterVersionInfo = & $script:flutterCommand --version --machine | ConvertFrom-Json
 if ($flutterVersionInfo.frameworkVersion -ne $expectedFlutterVersion) {
     throw "Expected Flutter $expectedFlutterVersion but found $($flutterVersionInfo.frameworkVersion)."
@@ -474,10 +508,13 @@ if ($flutterVersionInfo.frameworkVersion -ne $expectedFlutterVersion) {
 
 $appVersion = Get-AppVersion
 $distDir = Join-Path $projectRoot 'dist'
-$coreBinary = Find-CoreBinary
+$coreBinary = $null
+if ($needWindows) {
+    $coreBinary = Find-CoreBinary
+}
 
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
-switch ($Target) {
+switch ($buildMode) {
     'all' {
         Get-ChildItem -Path $distDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
     }
@@ -487,20 +524,32 @@ switch ($Target) {
     'windows' {
         Get-ChildItem -Path $distDir -Filter '*_windows.exe' -Force -ErrorAction SilentlyContinue | Remove-Item -Force
     }
+    'vpn-apk' {
+        Get-ChildItem -Path $distDir -Filter '9.9vpn_*.apk' -Force -ErrorAction SilentlyContinue | Remove-Item -Force
+    }
+    'vpn-exe' {
+        Get-ChildItem -Path $distDir -Filter '9.9vpn_*_windows.exe' -Force -ErrorAction SilentlyContinue | Remove-Item -Force
+    }
 }
 
 Invoke-Flutter -Arguments @('clean')
 Invoke-Flutter -Arguments @('pub', 'get')
 
-if ($Target -in @('all', 'android')) {
+if ($buildAndroidVpn) {
     Build-AndroidArtifact -Flavor 'vpn' -Version $appVersion -DistDir $distDir
+}
+if ($buildAndroidAcc) {
     Build-AndroidArtifact -Flavor 'acc' -Version $appVersion -DistDir $distDir
 }
 
-if ($Target -in @('all', 'windows')) {
+if ($needWindows) {
     Repair-WindowsEngineCache
-    Build-WindowsArtifact -Flavor 'vpn' -Version $appVersion -DistDir $distDir -CoreBinary $coreBinary
-    Build-WindowsArtifact -Flavor 'acc' -Version $appVersion -DistDir $distDir -CoreBinary $coreBinary
+    if ($buildWindowsVpn) {
+        Build-WindowsArtifact -Flavor 'vpn' -Version $appVersion -DistDir $distDir -CoreBinary $coreBinary
+    }
+    if ($buildWindowsAcc) {
+        Build-WindowsArtifact -Flavor 'acc' -Version $appVersion -DistDir $distDir -CoreBinary $coreBinary
+    }
 }
 
 Write-Host ''

@@ -61,18 +61,20 @@ flutter run -d windows --dart-define=FLAVOR=vpn
 ## 统一打包命令
 
 ```powershell
-.\apk.bat
+.\apk.bat      # 全部：VPN + 加速器，安卓包 + 桌面安装包
+.\apk.bat 1    # 仅 VPN 安卓包
+.\apk.bat 2    # 仅 VPN 桌面安装包
 ```
 
 运行前会先执行 `clean`，并强制校验 Flutter 版本为 `3.27.0`。
-Windows 安装器依赖 Inno Setup 的 `ISCC.exe`，可通过环境变量 `ISCC_PATH` 指定。
+桌面安装包依赖 Inno Setup 的 `ISCC.exe`，可通过环境变量 `ISCC_PATH` 指定；只打安卓包时不需要。
 
-运行后会把 4 个产物统一放到 `dist/` 根目录：
+产物输出到 `dist/`：
 
 - `dist/9.9vpn_<version>.apk`
-- `dist/9.9acc_<version>.apk`
+- `dist/9.9acc_<version>.apk`（仅全量 / 安卓全量）
 - `dist/9.9vpn_<version>_windows.exe`
-- `dist/9.9acc_<version>_windows.exe`
+- `dist/9.9acc_<version>_windows.exe`（仅全量 / 桌面全量）
 
 Windows VPN 依赖 `xray.exe` 或 `v2ray.exe`。可以用任一方式提供：
 
